@@ -29,8 +29,6 @@ class TelloKeyboardTeleop(Node):
         self.sub_battery = self.create_subscription(BatteryState, 'battery', self.battery_callback, 1)
         self.sub_image = self.create_subscription(Image, 'image_raw', self.video_receiver_callback, 1)
         self.sub_status = self.create_subscription(TelloStatus, "status", self.status_callback, 1)
-        self.pub_cmd_vel_1 = self.create_publisher(
-            Twist, '/simu_tello1/cmd_vel', 1)
 
         self.battery = None
         self.status = None
@@ -76,13 +74,6 @@ class TelloKeyboardTeleop(Node):
             self.get_logger().info(f"key {key} not mapped, stopping")
 
         self.publisher_velocity.publish(msg)
-        
-        simu_msg = Twist()
-        simu_msg.linear.x = msg.linear.x / 1000
-        simu_msg.linear.y = msg.linear.y / 1000
-        simu_msg.linear.z = msg.linear.z / 1000
-        simu_msg.angular.z = msg.angular.z / 1000
-        self.pub_cmd_vel_1.publish(simu_msg)
 
     def timer_callback(self):
 

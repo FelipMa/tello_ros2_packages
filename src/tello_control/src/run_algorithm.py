@@ -9,11 +9,11 @@ import numpy as np
 import threading
 from typing import List
 import copy
-class control_drones():
+class control_algorithm():
 
     def __init__(self):
         rclpy.init()
-        self.node = rclpy.create_node('control_drones')
+        self.node = rclpy.create_node('control_algorithm')
         self.number_of_drones = 4
         self.pos1 = None
         self.pos2 = None
@@ -23,36 +23,31 @@ class control_drones():
         self.finish = False
         self.distance_threshold = 0.05
 
+        # Set up the reference position to be reached
         posRef = Point()
         posRef.x = 1.5
         posRef.y = 1.0
         self.posRef = posRef
 
-        self.pub_cmd_vel_1 = self.node.create_publisher(
-            Twist, '/simu_tello1/cmd_vel', 1)
-        self.pub_cmd_vel_2 = self.node.create_publisher(
-            Twist, '/simu_tello2/cmd_vel', 1)
-        self.pub_cmd_vel_3 = self.node.create_publisher(
-            Twist, '/simu_tello3/cmd_vel', 1)
-        self.pub_cmd_vel_4 = self.node.create_publisher(
-            Twist, '/simu_tello4/cmd_vel', 1)
-        self.pub_cmd_vel_real = self.node.create_publisher(
-            Twist, 'control', 1)
-        self.sub_pos_1 = self.node.create_subscription(
-            Odometry, '/simu_tello1/odom', self.callback_1, 1)
-        self.sub_pos_2 = self.node.create_subscription(
-            Odometry, '/simu_tello2/odom', self.callback_2, 1)
-        self.sub_pos_3 = self.node.create_subscription(
-            Odometry, '/simu_tello3/odom', self.callback_3, 1)
-        self.sub_pos_4 = self.node.create_subscription(
-            Odometry, '/simu_tello4/odom', self.callback_4, 1)
+        # Set up publishers
+        self.pub_cmd_vel_1 = self.node.create_publisher(Twist, '/simu_tello1/cmd_vel', 1)
+        self.pub_cmd_vel_2 = self.node.create_publisher(Twist, '/simu_tello2/cmd_vel', 1)
+        self.pub_cmd_vel_3 = self.node.create_publisher(Twist, '/simu_tello3/cmd_vel', 1)
+        self.pub_cmd_vel_4 = self.node.create_publisher(Twist, '/simu_tello4/cmd_vel', 1)
+
+        # Set up subscribers
+        self.sub_pos_1 = self.node.create_subscription(Odometry, '/simu_tello1/odom', self.callback_1, 1)
+        self.sub_pos_2 = self.node.create_subscription(Odometry, '/simu_tello2/odom', self.callback_2, 1)
+        self.sub_pos_3 = self.node.create_subscription(Odometry, '/simu_tello3/odom', self.callback_3, 1)
+        self.sub_pos_4 = self.node.create_subscription(Odometry, '/simu_tello4/odom', self.callback_4, 1)
 
         spin_node_thread = threading.Thread(target=rclpy.spin, args=(self.node,))
         spin_node_thread.start()
 
         self.getUp()
         # Wait for the drones to get up and start publishing their positions
-        time.sleep(0.5)
+        while self.pos1 is None or self.pos2 is None or self.pos3 is None or self.pos4 is None:
+            time.sleep(0.005)
 
         while rclpy.ok():
             self.consensus_algorithm()
@@ -79,18 +74,6 @@ class control_drones():
             connections = pub.get_subscription_count()
             if connections > 0:
                 pub.publish(cmd)
-                if pub == self.pub_cmd_vel_1:
-                    cmd.linear.x = cmd.linear.x * 1000
-                    cmd.linear.y = cmd.linear.y * 1000
-                    cmd.linear.z - cmd.linear.z * 1000
-                    cmd.angular.x = cmd.angular.x * 1000
-
-                    cmd.linear.x = np.clip(cmd.linear.x, -30, 30)
-                    cmd.linear.y = np.clip(cmd.linear.y, -30, 30)
-                    cmd.linear.z = np.clip(cmd.linear.z, -30, 30)
-                    cmd.angular.x = np.clip(cmd.angular.x, -30, 30)
-
-                    self.pub_cmd_vel_real.publish(cmd)
                 break
             else:
                 time.sleep(0.005)
@@ -229,4 +212,4 @@ class control_drones():
 
 
 if __name__ == '__main__':
-    control_drones()
+    control_algorithm()
