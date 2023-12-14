@@ -1,0 +1,6 @@
+Copyright 2023 FelipMa
+
+I don't know anything about licenses.
+
+This project was based on other projects and codes, but many parts
+were changed and made by me, so I think it is ok to say this is my project.
