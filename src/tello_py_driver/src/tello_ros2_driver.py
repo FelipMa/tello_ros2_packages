@@ -105,16 +105,11 @@ class TelloNode():
 
     # Setup the topic subscribers of the node.
     def setup_subscribers(self):
-        self.sub_emergency = self.node.create_subscription(
-            Empty, 'emergency', self.cb_emergency, 1)
-        self.sub_takeoff = self.node.create_subscription(
-            Empty, 'takeoff', self.cb_takeoff, 1)
-        self.sub_land = self.node.create_subscription(
-            Empty, 'land', self.cb_land, 1)
-        self.sub_control = self.node.create_subscription(
-            Twist, 'control', self.cb_control, 1)
-        self.sub_flip = self.node.create_subscription(
-            String, 'flip', self.cb_flip, 1)
+        self.sub_emergency = self.node.create_subscription(Empty, 'emergency', self.cb_emergency, 1)
+        self.sub_takeoff = self.node.create_subscription(Empty, 'takeoff', self.cb_takeoff, 1)
+        self.sub_land = self.node.create_subscription(Empty, 'land', self.cb_land, 1)
+        self.sub_control = self.node.create_subscription(Twist, 'control', self.cb_control, 1)
+        self.sub_flip = self.node.create_subscription(String, 'flip', self.cb_flip, 1)
 
     # Get the orientation of the drone as a quaternion
     def get_orientation_quaternion(self):

@@ -44,34 +44,34 @@ class TelloKeyboardTeleop(Node):
 
         if key == 81:  # left arrow
             msg.angular.z = -self.manual_speed
-            self.get_logger().info("left arrow")
+            self.get_logger().info("Counter-clockwise")
         elif key == 83:  # right arrow
             msg.angular.z = self.manual_speed
-            self.get_logger().info("right arrow")
+            self.get_logger().info("Clockwise")
         elif key == 82:  # up arrow
             msg.linear.z = self.manual_speed
-            self.get_logger().info("up arrow")
+            self.get_logger().info("Up")
         elif key == 84:  # down arrow
             msg.linear.z = -self.manual_speed
-            self.get_logger().info("down arrow")
+            self.get_logger().info("Down")
         elif key == ord('a'):
             msg.linear.y = -self.manual_speed
-            self.get_logger().info("left")
+            self.get_logger().info("Left")
         elif key == ord('d'):
             msg.linear.y = self.manual_speed
-            self.get_logger().info("right")
+            self.get_logger().info("Right")
         elif key == ord('w'):
             msg.linear.x = self.manual_speed
-            self.get_logger().info("forward")
+            self.get_logger().info("Forward")
         elif key == ord('s'):
             msg.linear.x = -self.manual_speed
-            self.get_logger().info("backward")
+            self.get_logger().info("Backward")
         else:
             msg.linear.x = 0.0
             msg.linear.y = 0.0
             msg.linear.z = 0.0
             msg.angular.z = 0.0
-            self.get_logger().info(f"key {key} not mapped, stopping")
+            self.get_logger().info(f"Key {key} not mapped, stopping")
 
         self.publisher_velocity.publish(msg)
 
@@ -87,11 +87,26 @@ class TelloKeyboardTeleop(Node):
             elif key == ord('l'):
                 self.publisher_land.publish(Empty())
                 self.get_logger().info("Land")
-            elif key == ord('f'):
+            elif key == ord('y'):
                 msg = String()
-                msg.data = 'f'
+                msg.data = 'f' # forward
                 self.publisher_flip.publish(msg)
-                self.get_logger().info("Flip")
+                self.get_logger().info("Flip forward")
+            elif key == ord('h'):
+                msg = String()
+                msg.data = 'b' # backward
+                self.publisher_flip.publish(msg)
+                self.get_logger().info("Flip backward")
+            elif key == ord('g'):
+                msg = String()
+                msg.data = 'l'
+                self.publisher_flip.publish(msg)
+                self.get_logger().info("Flip left")
+            elif key == ord('j'):
+                msg = String()
+                msg.data = 'r'
+                self.publisher_flip.publish(msg)
+                self.get_logger().info("Flip right")
             elif key == ord('e'):
                 self.publisher_emergency.publish(Empty())
                 self.get_logger().info("Emergency")

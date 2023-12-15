@@ -95,20 +95,26 @@ ros2 run tello_control keyboard_teleop.py
 Now, you can control the drone using the keyboard:
 
 ```bash
-W: forward
-S: backward
-A: left
-D: right
+w: forward
+s: backward
+a: left
+d: right
 
 up arrow: up
 down arrow: down
-left arrow: rotate left
-right arrow: rotate right
+left arrow: rotate counterclockwise
+right arrow: rotate clockwise
+
+y: flip forward
+h: flip backward
+g: flip left
+j: flip right
 
 t: takeoff
 l: land
 space: emergency stop
-f: flip (flip usually doesn't work)
+b: battery status
+p: print drone status
 ```
 
 ## Fly multiple drones
@@ -163,5 +169,9 @@ The documentation also explains about other commands, like `foward x` and `go x 
 The consensus algorithm in tello_control package is an algorithm that simulates an consensus algorithm in a swarm of drones. This algorithm is part of my scientific initiation project, and the main motivation to develop this project. The algorithm is still in development, but I believe this project can be useful for many other use cases.
 
 ## Observations
+
+When the battery is low enough (below 10% I think), the drone do not takeoff (observed during tests). I suppose this is a safety feature of the drone.
+
+When the battery is low enough (below 30% I think), the drone do not flip (observed during tests). I suppose this is a safety feature of the drone too.
 
 I do not know if my video capture methods are the best way to capture video from the drone. Sometimes the video is not very fluid, specially when I fly multiple drones.
