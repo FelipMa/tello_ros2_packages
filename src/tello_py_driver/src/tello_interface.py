@@ -22,7 +22,6 @@ class Tello:
     """
     # Send and receive commands, client socket
     RESPONSE_TIMEOUT = 0.5  # in seconds
-    TIME_BTW_RC_CONTROL_COMMANDS = 0.005  # in seconds
 
     TELLO_IP = '192.168.10.1'  # Tello IP address
 
@@ -116,8 +115,6 @@ class Tello:
 
         self.LOGGER.info("Tello instance was initialized. Host: '{}'. Port: '{}'.".format(
             host, Tello.CONTROL_UDP_PORT))
-
-        self.vs_udp_port = Tello.VS_UDP_PORT
 
     def get_own_udp_object(self):
         """Get own object from the global drones dict. This object is filled
@@ -640,7 +637,7 @@ class Tello:
 
     def send_rc_control(self, left_right_velocity: int, forward_backward_velocity: int, up_down_velocity: int,
                         yaw_velocity: int):
-        """Send RC control via four channels. Command is sent every self.TIME_BTW_RC_CONTROL_COMMANDS seconds.
+        """Send RC control via four channels.
         Arguments:
             left_right_velocity: -100~100 (left/right)
             forward_backward_velocity: -100~100 (forward/backward)
@@ -650,7 +647,7 @@ class Tello:
         def clamp100(x: int) -> int:
             return max(-100, min(100, x))
 
-        if time.time() - self.last_rc_control_timestamp > self.TIME_BTW_RC_CONTROL_COMMANDS:
+        if time.time() - self.last_rc_control_timestamp > 0.01:
             self.last_rc_control_timestamp = time.time()
             cmd = 'rc {} {} {} {}'.format(
                 clamp100(left_right_velocity),
@@ -659,69 +656,6 @@ class Tello:
                 clamp100(yaw_velocity)
             )
             self.send_control_command_non_blocking(cmd)
-
-    # def set_network_ports(self, state_packet_port: int, video_stream_port: int):
-    #    """Sets the ports for state packets and video streaming
-    #    While you can use this command to reconfigure the Tello this library currently does not support
-    #    non-default ports (TODO!)
-    #    """
-    #    cmd = 'port {} {}'.format(state_packet_port, video_stream_port)
-    #    self.send_control_command_non_blocking(cmd)
-    #
-    # def reboot(self):
-    #    """Reboots the drone
-    #    """
-    #    self.send_command_with_return_non_blocking("reboot")
-
-    def set_video_bitrate(self, bitrate: int):
-        """Sets the bitrate of the video stream
-        Use one of the following for the bitrate argument:
-            Tello.BITRATE_AUTO
-            Tello.BITRATE_1MBPS
-            Tello.BITRATE_2MBPS
-            Tello.BITRATE_3MBPS
-            Tello.BITRATE_4MBPS
-            Tello.BITRATE_5MBPS
-        """
-        cmd = 'setbitrate {}'.format(bitrate)
-        self.send_control_command_non_blocking(cmd)
-
-    def set_video_resolution(self, resolution: str):
-        """Sets the resolution of the video stream
-        Use one of the following for the resolution argument:
-            Tello.RESOLUTION_480P
-            Tello.RESOLUTION_720P
-        """
-        cmd = 'setresolution {}'.format(resolution)
-        self.send_control_command_non_blocking(cmd)
-
-    def set_video_fps(self, fps: str):
-        """Sets the frames per second of the video stream
-        Use one of the following for the fps argument:
-            Tello.FPS_5
-            Tello.FPS_15
-            Tello.FPS_30
-        """
-        cmd = 'setfps {}'.format(fps)
-        self.send_control_command_non_blocking(cmd)
-
-    def set_video_direction(self, direction: int):
-        """Selects one of the two cameras for video streaming
-        The forward camera is the regular 1080x720 color camera
-        The downward camera is a grey-only 320x240 IR-sensitive camera
-        Use one of the following for the direction argument:
-            Tello.CAMERA_FORWARD
-            Tello.CAMERA_DOWNWARD
-        """
-        cmd = 'downvision {}'.format(direction)
-        self.send_control_command_non_blocking(cmd)
-
-    def send_expansion_command(self, expansion_cmd: str):
-        """Sends a command to the ESP32 expansion board connected to a Tello Talent
-        Use e.g. tello.send_expansion_command("led 255 0 0") to turn the top led red.
-        """
-        cmd = 'EXT {}'.format(expansion_cmd)
-        self.send_control_command_non_blocking(cmd)
 
     def query_speed(self) -> int:
         """Query speed setting (cm/s)
@@ -820,19 +754,6 @@ class Tello:
         self.end()
 
     # check if this works later
-    def change_vs_udp(self, udp_port):
-        """Change the UDP Port for sending video feed from the drone.
-        """
-        self.vs_udp_port = udp_port
-        self.send_control_command_non_blocking(f'port 8890 {self.vs_udp_port}')
-    
-    def get_udp_video_address(self) -> str:
-        """Internal method, you normally wouldn't call this youself.
-        """
-        address_schema = 'udp://{network_interface}@{ip}:{port}'
-        address = address_schema.format(network_interface=self.network_interface, ip='192.168.10.1', port=self.vs_udp_port)
-        return address
-
     def get_frame_read(self):
         """Return last frame read from the drone.
         """
@@ -845,7 +766,7 @@ class Tello:
         video_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         if Tello.network_interface is not None:
             video_socket.setsockopt(socket.SOL_SOCKET, socket.SO_BINDTODEVICE, Tello.network_interface.encode())
-        video_socket.bind(("", self.vs_udp_port))
+        video_socket.bind(("", Tello.VS_UDP_PORT))
 
         while True:
             data, address = video_socket.recvfrom(2048)

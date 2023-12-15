@@ -5,6 +5,7 @@ DJI Tello Driver for ROS2 based on oficial SDK and some other projects
 - Oficial [Tello SDK](https://dl-cdn.ryzerobotics.com/downloads/tello/20180910/Tello%20SDK%20Documentation%20EN_1.3.pdf)
 - https://github.com/clydemcqueen/tello_ros
 - https://github.com/tentone/tello-ros2
+- https://github.com/damiafuentes/DJITelloPy
 
 ## Table of Contents
 
@@ -132,19 +133,30 @@ Run the launch file:
 ros2 launch tello_gazebo multiple_drones_launch.py
 ```
 
-### Real drone axis and Gazebo axis
+## Real drone axis and Gazebo axis
 
-The real drone axis are the following:
+The real drone axis, according to its sensors, are the following:
 
 ![Tello Axis](tello_axis.jpg)
 
-The Gazebo axis are the following:
+The main command to control the drone is `rc a b c d`, where, according to the documentation:
+
+```bash
+a: left/right (-100~100), negative is left and positive is right (Y axis)
+b: forward/backward (-100~100), negative is forward and positive is backward (X axis)
+c: up/down (-100~100), negative is up and positive is down (Z axis)
+d: yaw (-100~100), negative is counterclockwise and positive is clockwise (Yaw axis)
+```
+
+Although, unlike the documentation explains, the drone somehow goes up when the `c (Z axis)` is positive and goes down when is negative.
+
+The Gazebo axis, according to its sensors, are the following:
 
 ![Simu Axis](tello_simu_axis.png)
 
-The difference between the axis implies that the drone rotates hava inverted direction in Y axis (left and right), inverted direction in Yaw axis (rotate left and rotate right) and should have inverted direction in Z axis (up and down), however, unlike the documentation explains, the drone somehow goes up when the Z axis is positive and goes down when the Z axis is negative.
+The difference between the axis implies that the drone rotates in a inverted direction in Y axis (left and right), inverted direction in Yaw axis (rotate left and rotate right) and should have inverted direction in Z axis (up and down), however, like explained before, the drone goes up when the `c (Z axis)` is positive and goes down when is negative.
 
-TODO: Fix the drone axis in Gazebo
+The documentation also explains about other commands, like `foward x` and `go x y z speed`, this commands do not follow the same logic as the sensors, the orientation for this commands is the same as the Gazebo axis. Furthermore, I do not recommend to use other commands than `rc a b c d` to control the drone, because the drone does not follow the commands very well, and often returns errors.
 
 ## More information
 
