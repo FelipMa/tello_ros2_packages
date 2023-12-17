@@ -92,8 +92,7 @@ namespace tello_gazebo
 
   public:
 
-    TelloPlugin()
-    {
+    TelloPlugin() {
       (void) update_connection_;
       (void) cmd_vel_sub_;
       (void) takeoff_sub_;
@@ -102,49 +101,16 @@ namespace tello_gazebo
       transition(FlightState::landed);
     }
 
-    ~TelloPlugin()
-    {
-    }
+    ~TelloPlugin() {}
 
-    void set_target_velocities(double x, double y, double z, double yaw)
-    {
+    void set_target_velocities(double x, double y, double z, double yaw) {
       x_controller_.set_target(x);
       y_controller_.set_target(y);
       z_controller_.set_target(z);
       yaw_controller_.set_target(yaw);
     }
 
-    // Respond to a command of the form "rc x y z yaw"
-    void set_target_velocities(std::string rc_command)
-    {
-      double x, y, z, yaw;
-
-      try {
-        std::istringstream stringStream(rc_command, std::istringstream::in);
-        std::string s; // s are the words in the string, separated by spaces
-        stringStream >> s; // "rc"
-        stringStream >> s;
-        x = std::stof(s);
-        stringStream >> s;
-        y = std::stof(s);
-        stringStream >> s;
-        z = std::stof(s);
-        stringStream >> s;
-        yaw = std::stof(s);
-      } catch (std::exception e) {
-        RCLCPP_ERROR(node_->get_logger(), "can't parse rc command '%s', exception %s", rc_command.c_str(), e.what());
-        return;
-      }
-
-      set_target_velocities(
-        x * MAX_XY_V,
-        y * MAX_XY_V,
-        z * MAX_Z_V,
-        yaw * MAX_ANG_V);
-    }
-
-    void transition(FlightState next)
-    {
+    void transition(FlightState next) {
       if (node_ != nullptr) {
         RCLCPP_INFO(node_->get_logger(), "transition from '%s' to '%s'", state_strs_[flight_state_], state_strs_[next]);
       }
@@ -169,8 +135,7 @@ namespace tello_gazebo
     }
 
     // Called once when the plugin is loaded.
-    void Load(gazebo::physics::ModelPtr model, sdf::ElementPtr sdf)
-    {
+    void Load(gazebo::physics::ModelPtr model, sdf::ElementPtr sdf) {
       GZ_ASSERT(model != nullptr, "Model is null");
       GZ_ASSERT(sdf != nullptr, "SDF is null");
 
@@ -218,24 +183,16 @@ namespace tello_gazebo
       tello_response_pub_ = node_->create_publisher<tello_msgs::msg::TelloResponse>("tello_response", 1);
 
       // ROS subscription
-      cmd_vel_sub_ = node_->create_subscription<geometry_msgs::msg::Twist>("cmd_vel", 10,
-                                                                           std::bind(&TelloPlugin::cmd_vel_callback,
-                                                                                     this, std::placeholders::_1));
-      takeoff_sub_ = node_->create_subscription<std_msgs::msg::Empty>("takeoff", 10,
-                                                                           std::bind(&TelloPlugin::takeoff_callback, 
-                                                                           this, std::placeholders::_1));
-      land_sub_ = node_->create_subscription<std_msgs::msg::Empty>("land", 10,
-                                                                           std::bind(&TelloPlugin::land_callback,
-                                                                           this, std::placeholders::_1));
+      cmd_vel_sub_ = node_->create_subscription<geometry_msgs::msg::Twist>("cmd_vel", 10, std::bind(&TelloPlugin::cmd_vel_callback, this, std::placeholders::_1));
+      takeoff_sub_ = node_->create_subscription<std_msgs::msg::Empty>("takeoff", 10, std::bind(&TelloPlugin::takeoff_callback, this, std::placeholders::_1));
+      land_sub_ = node_->create_subscription<std_msgs::msg::Empty>("land", 10, std::bind(&TelloPlugin::land_callback, this, std::placeholders::_1));
 
       // Listen for the Gazebo update event. This event is broadcast every simulation iteration.
-      update_connection_ = gazebo::event::Events::ConnectWorldUpdateBegin(
-        boost::bind(&TelloPlugin::OnUpdate, this, _1));
+      update_connection_ = gazebo::event::Events::ConnectWorldUpdateBegin(boost::bind(&TelloPlugin::OnUpdate, this, _1));
     }
 
     // Called by the world update start event, up to 1000 times per second.
-    void OnUpdate(const gazebo::common::UpdateInfo &info)
-    {
+    void OnUpdate(const gazebo::common::UpdateInfo &info) {
       // Do nothing if the battery is dead
       if (flight_state_ == FlightState::dead_battery) {
         return;
@@ -289,8 +246,7 @@ namespace tello_gazebo
       }
     }
 
-    bool is_prefix(const std::string &prefix, const std::string &str)
-    {
+    bool is_prefix(const std::string &prefix, const std::string &str) {
       return std::equal(prefix.begin(), prefix.end(), str.begin());
     }
 
@@ -298,8 +254,7 @@ namespace tello_gazebo
 #pragma ide diagnostic ignored "UnusedValue"
 #pragma clang diagnostic pop
 
-    void cmd_vel_callback(const geometry_msgs::msg::Twist::SharedPtr msg)
-    {
+    void cmd_vel_callback(const geometry_msgs::msg::Twist::SharedPtr msg) {
       if (flight_state_ == FlightState::flying) {
         // TODO cmd_vel should specify velocity, not joystick position
         set_target_velocities(
@@ -310,30 +265,26 @@ namespace tello_gazebo
       }
     }
 
-    void takeoff_callback(const std_msgs::msg::Empty::SharedPtr msg)
-    {
+    void takeoff_callback(const std_msgs::msg::Empty::SharedPtr msg) {
       if (flight_state_ == FlightState::landed) {
         transition(FlightState::taking_off);
       }
     }
 
-    void land_callback(const std_msgs::msg::Empty::SharedPtr msg)
-    {
+    void land_callback(const std_msgs::msg::Empty::SharedPtr msg) {
       if (flight_state_ == FlightState::flying) {
         transition(FlightState::landing);
       }
     }
 
-    void respond_ok()
-    {
+    void respond_ok() {
       tello_msgs::msg::TelloResponse msg;
       msg.rc = msg.OK;
       msg.str = "ok";
       tello_response_pub_->publish(msg);
     }
 
-    void spin_10Hz()
-    {
+    void spin_10Hz() {
       rclcpp::Time ros_time = node_->now();
 
       // Wait for ROS time to get reasonable TODO sometimes this never happens
