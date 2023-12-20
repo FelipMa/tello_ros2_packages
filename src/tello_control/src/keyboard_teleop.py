@@ -1,17 +1,13 @@
 #!/usr/bin/env python3
 
 import rclpy
-
-import rclpy
 from rclpy.node import Node
 from geometry_msgs.msg import Twist
 from std_msgs.msg import Empty, String
 from tello_msgs.msg import TelloStatus
 import numpy as np
 from sensor_msgs.msg import BatteryState, Image
-
 import cv2
-
 
 class TelloKeyboardTeleop(Node):
 

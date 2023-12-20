@@ -19,7 +19,6 @@ def inject(xml: str, initial_pose: Pose, robot_namespace: str = ''):
 
     if not client.service_is_ready():
         node.get_logger().info('waiting for spawn_entity service...')
-        node.get_logger().info(robot_namespace + "a")
         client.wait_for_service()
 
     request = SpawnEntity.Request()

@@ -20,7 +20,7 @@ find_package(ament_cmake REQUIRED)
 
 ## Install Python scripts
 install(
-  PROGRAMS src/keyboard_teleop.py src/run_algorithm.py src/takeoff_simu.py src/land_simu.py src/single_tragetory.py
+  PROGRAMS src/keyboard_teleop.py src/run_algorithm.py
   DESTINATION lib/${PROJECT_NAME}
 )
 

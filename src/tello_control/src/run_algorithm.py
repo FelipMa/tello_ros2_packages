@@ -2,26 +2,27 @@
 
 import time
 import rclpy
+from rclpy.node import Node
+from rclpy.publisher import Publisher
 from geometry_msgs.msg import Twist
 from geometry_msgs.msg import Point
 from nav_msgs.msg import Odometry
+from std_msgs.msg import Empty
 import numpy as np
 import threading
 from typing import List
 import copy
+
 class control_algorithm():
 
     def __init__(self):
         rclpy.init()
         self.node = rclpy.create_node('control_algorithm')
+        self.drones: List[tello_controller] = []
         self.number_of_drones = 4
-        self.pos1 = None
-        self.pos2 = None
-        self.pos3 = None
-        self.pos4 = None
-        self.time_counter = 0
         self.finish = False
         self.distance_threshold = 0.05
+        self.max_velocity = 0.03
 
         # Set up the reference position to be reached
         posRef = Point()
@@ -29,26 +30,32 @@ class control_algorithm():
         posRef.y = 1.0
         self.posRef = posRef
 
-        # Set up publishers
-        self.pub_cmd_vel_1 = self.node.create_publisher(Twist, '/simu_tello1/cmd_vel', 1)
-        self.pub_cmd_vel_2 = self.node.create_publisher(Twist, '/simu_tello2/cmd_vel', 1)
-        self.pub_cmd_vel_3 = self.node.create_publisher(Twist, '/simu_tello3/cmd_vel', 1)
-        self.pub_cmd_vel_4 = self.node.create_publisher(Twist, '/simu_tello4/cmd_vel', 1)
+        # Create tello controllers
+        for i in range(1, self.number_of_drones + 1):
+            ns = '/simu_tello' + str(i)
+            self.drones.append(tello_controller(self.node, ns))
 
-        # Set up subscribers
-        self.sub_pos_1 = self.node.create_subscription(Odometry, '/simu_tello1/odom', self.callback_1, 1)
-        self.sub_pos_2 = self.node.create_subscription(Odometry, '/simu_tello2/odom', self.callback_2, 1)
-        self.sub_pos_3 = self.node.create_subscription(Odometry, '/simu_tello3/odom', self.callback_3, 1)
-        self.sub_pos_4 = self.node.create_subscription(Odometry, '/simu_tello4/odom', self.callback_4, 1)
-
+        # Spin the node in a separate thread
         spin_node_thread = threading.Thread(target=rclpy.spin, args=(self.node,))
         spin_node_thread.start()
 
-        self.getUp()
-        # Wait for the drones to get up and start publishing their positions
-        while self.pos1 is None or self.pos2 is None or self.pos3 is None or self.pos4 is None:
-            time.sleep(0.005)
+        # Take off
+        for drone in self.drones:
+            drone.takeoff()
+        time.sleep(4)
 
+        # Change altitudes
+        self.getUp()
+        time.sleep(2)
+
+        # Wait for the drones to get up and start publishing their positions
+        while True:
+            if all([drone.get_pos() is not None for drone in self.drones]):
+                break
+            else:
+                time.sleep(0.05)
+
+        # Start the consensus algorithm
         while rclpy.ok():
             self.consensus_algorithm()
             if self.finish:
@@ -58,68 +65,29 @@ class control_algorithm():
 
         rclpy.shutdown()
 
-    def publish_once_in_cmd_vel(self, pubid: int, cmd: Twist):
-        if pubid == 1:
-            pub = self.pub_cmd_vel_1
-        elif pubid == 2:
-            pub = self.pub_cmd_vel_2
-        elif pubid == 3:
-            pub = self.pub_cmd_vel_3
-        elif pubid == 4:
-            pub = self.pub_cmd_vel_4
-        else:
-            return
-
-        while True:
-            connections = pub.get_subscription_count()
-            if connections > 0:
-                pub.publish(cmd)
-                break
-            else:
-                time.sleep(0.005)
-
-    def callback_1(self, data: Odometry):
-        pos1 = data.pose.pose.position
-        self.pos1 = pos1
-
-    def callback_2(self, data: Odometry):
-        pos2 = data.pose.pose.position
-        self.pos2 = pos2
-
-    def callback_3(self, data: Odometry):
-        pos3 = data.pose.pose.position
-        self.pos3 = pos3
-
-    def callback_4(self, data: Odometry):
-        pos4 = data.pose.pose.position
-        self.pos4 = pos4
-
     def getUp(self):
-        move_msg = Twist()
+        msg = Twist()
 
-        for i in range(1, self.number_of_drones + 1):
-            move_msg.linear.z = 0.05 * i
-            self.publish_once_in_cmd_vel(i, move_msg)
-
-        time.sleep(1)
-
-        for i in range(1, self.number_of_drones + 1):
-            move_msg.linear.z = 0.0
-            self.publish_once_in_cmd_vel(i, move_msg)
+        for i in range(0, self.number_of_drones):
+            msg.linear.z = 0.05 * (i+1)
+            self.drones[i].publish_velocity(msg)
 
         time.sleep(1)
+
+        for i in range(0, self.number_of_drones):
+            msg.linear.z = 0.0
+            self.drones[i].publish_velocity(msg)
 
     def stop(self):
-        move_msg = Twist()
-        move_msg.linear.x = 0.0
-        move_msg.linear.y = 0.0
-        move_msg.linear.z = 0.0
-        for i in range(1, self.number_of_drones + 1):
-            self.publish_once_in_cmd_vel(i, move_msg)
+        msg = Twist()
+
+        for i in range(0, self.number_of_drones):
+            self.drones[i].publish_velocity(msg)
 
     def seeOtherDrones(self, dronePos: Point, otherPos: List[Point]) -> List[int]:
         radius = 3
         seeArray = [0] * len(otherPos)
+
         for i in range(0, len(otherPos)):
             if (dronePos.x - otherPos[i].x)**2 + (dronePos.y - otherPos[i].y)**2 <= radius**2:
                 seeArray[i] = 1
@@ -154,26 +122,23 @@ class control_algorithm():
     # to do, check if the graph is connected
     def missionCanBeCompleted(self, comunicate_matrix: List[List[int]]):
         return True
-
+    
     def consensus_algorithm(self):
-        pos1 = self.pos1
-        pos2 = self.pos2
-        pos3 = self.pos3
-        pos4 = self.pos4
-        posRef = self.posRef
+    
+        pos_matrix: List[Point] = [drone.get_pos() for drone in self.drones]
+        pos_matrix.append(self.posRef)
 
-        pos_matrix: List[Point] = [pos1, pos2, pos3, pos4, posRef]
+        visions: List[List[int]] = []
+        for i in range(0, self.number_of_drones):
+            visions.append(self.seeOtherDrones(pos_matrix[i], [pos_matrix[j] for j in range(0, len(pos_matrix)) if j != i]))
 
-        d1Vis = self.seeOtherDrones(pos1, [pos2, pos3, pos4, posRef])
-        d2Vis = self.seeOtherDrones(pos2, [pos1, pos3, pos4, posRef])
-        d3Vis = self.seeOtherDrones(pos3, [pos1, pos2, pos4, posRef])
-        d4Vis = self.seeOtherDrones(pos4, [pos1, pos2, pos3, posRef])
+        comunicate_matrix: List[List[int]] = []
+        for i in range(0, self.number_of_drones):
+            comunicate_matrix.append(visions[i])
+            comunicate_matrix[i].insert(i, 0)
 
-        comunicate_matrix: List[List[int]] = [[0, d1Vis[0], d1Vis[1], d1Vis[2], d1Vis[3]],
-                                            [d2Vis[0], 0, d2Vis[1], d2Vis[2], d2Vis[3]],
-                                            [d3Vis[0], d3Vis[1], 0, d3Vis[2], d3Vis[3]],
-                                            [d4Vis[0], d4Vis[1], d4Vis[2], 0, d4Vis[3]],
-                                            [0, 0, 0, 0, 0]]
+        ref_vis = [0] * (self.number_of_drones+1)
+        comunicate_matrix.append(ref_vis)
 
         if self.missionCanBeCompleted(comunicate_matrix):
             pass
@@ -186,30 +151,79 @@ class control_algorithm():
         
         move_msg = Twist()
 
-        finishArray = [0] * len(pos_matrix)
+        finishArray = [0] * self.number_of_drones
 
-        for i in range(0, len(pos_matrix)):
+        for i in range(0, self.number_of_drones):
             law_x = next_positions[i].x
             law_y = next_positions[i].y
 
             if abs(law_x) < self.distance_threshold:
                 move_msg.linear.x = 0.0
             else:
-                move_msg.linear.x = np.clip(law_x, -0.03, 0.03)
+                move_msg.linear.x = np.clip(law_x, -self.max_velocity, self.max_velocity)
 
             if abs(law_y) < self.distance_threshold:
                 move_msg.linear.y = 0.0
             else:
-                move_msg.linear.y = np.clip(law_y, -0.03, 0.03)
+                move_msg.linear.y = np.clip(law_y, -self.max_velocity, self.max_velocity)
 
-            self.publish_once_in_cmd_vel(i+1, move_msg)
+            self.drones[i].publish_velocity(move_msg)
 
             if move_msg.linear.x == 0.0 and move_msg.linear.y == 0.0:
                 finishArray[i] = 1
 
-        if sum(finishArray) == len(pos_matrix):
+        if sum(finishArray) == self.number_of_drones:
             self.finish = True
 
+class tello_controller():
+
+    def __init__(self, node: Node, ns: str):
+        self.node = node
+
+        self.pub_takeoff = node.create_publisher(Empty, ns + '/takeoff', 1)
+        self.pub_land = node.create_publisher(Empty, ns + '/land', 1)
+        self.pub_cmd_vel = node.create_publisher(Twist, ns + '/cmd_vel', 1)
+        
+        self.sub_pos = node.create_subscription(Odometry, ns + '/odom', self.odom_callback, 1)
+
+        self.pos = None
+
+    def check_subscribers(self, pub: Publisher, timeout: float = 1.0) -> bool:
+        counter = 0
+        while True:
+            connections = pub.get_subscription_count()
+            if connections == 1:
+                return True
+            elif connections > 1:
+                self.node.get_logger().info('Multiple subscribers connected to ' + pub.topic_name + ' (' + str(connections) + ')')
+                return True
+            else:
+                if counter >= timeout:
+                    self.node.get_logger().info('No subscribers connected to ' + pub.topic_name)
+                    return False
+                else:
+                    counter += 0.05
+                    time.sleep(0.05)
+        
+    def takeoff(self) -> None:
+        cmd = Empty()
+        if self.check_subscribers(self.pub_takeoff):
+            self.pub_takeoff.publish(cmd)
+
+    def land(self) -> None:
+        cmd = Empty()
+        if self.check_subscribers(self.pub_land):
+            self.pub_land.publish(cmd)
+
+    def publish_velocity(self, cmd: Twist) -> None:
+        if self.check_subscribers(self.pub_cmd_vel):
+            self.pub_cmd_vel.publish(cmd)
+
+    def odom_callback(self, msg: Odometry) -> None:
+        self.pos = msg.pose.pose.position
+
+    def get_pos(self) -> Point:
+        return self.pos
 
 if __name__ == '__main__':
     control_algorithm()
