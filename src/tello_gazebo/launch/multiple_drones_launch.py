@@ -10,7 +10,7 @@ from launch.actions import ExecuteProcess
 
 def generate_launch_description():
     # 1 or more drones:
-    drones = [0] * 4
+    drones = [0] * 5
 
     tello_gazebo_path = get_package_share_directory('tello_gazebo')
     tello_description_path = get_package_share_directory('tello_description')
@@ -32,9 +32,10 @@ def generate_launch_description():
 
     starting_positions = [
         ["0", "0"],
-        ["1", "2"],
-        ["2", "4"],
-        ["-2", "-2"],
+        ["2", "3"],
+        ["4", "1"],
+        ["3", "-3"],
+        ["-2", "3"]
     ]
 
     # Per-drone entities

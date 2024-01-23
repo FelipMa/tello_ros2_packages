@@ -12,6 +12,7 @@ import numpy as np
 import threading
 from typing import List
 import copy
+import matplotlib.pyplot as plt
 
 class control_algorithm():
 
@@ -19,16 +20,11 @@ class control_algorithm():
         rclpy.init()
         self.node = rclpy.create_node('control_algorithm')
         self.drones: List[tello_controller] = []
-        self.number_of_drones = 4
+        self.number_of_drones = 5
         self.finish = False
-        self.distance_threshold = 0.05
-        self.max_velocity = 0.03
-
-        # Set up the reference position to be reached
-        posRef = Point()
-        posRef.x = 1.5
-        posRef.y = 1.0
-        self.posRef = posRef
+        self.distance_threshold = 0.1
+        self.trajectory_plot: List[List[Point]] = []
+        self.next_positions_plot: List[List[Point]] = []
 
         # Create tello controllers
         for i in range(1, self.number_of_drones + 1):
@@ -55,6 +51,9 @@ class control_algorithm():
             else:
                 time.sleep(0.05)
 
+        # An arbitrary drone can start at the target position and stay there, in order to have a reference for the consensus algorithm
+        self.drones[0].at_target = True
+
         # Start the consensus algorithm
         while rclpy.ok():
             self.consensus_algorithm()
@@ -62,6 +61,9 @@ class control_algorithm():
                 self.stop()
                 print("Finished!")
                 break
+
+        # Generate plot
+        self.generate_plot()
 
         rclpy.shutdown()
 
@@ -83,9 +85,10 @@ class control_algorithm():
 
         for i in range(0, self.number_of_drones):
             self.drones[i].publish_velocity(msg)
+            self.drones[i].at_target = True
 
     def seeOtherDrones(self, dronePos: Point, otherPos: List[Point]) -> List[int]:
-        radius = 3
+        radius = 5.1
         seeArray = [0] * len(otherPos)
 
         for i in range(0, len(otherPos)):
@@ -96,26 +99,28 @@ class control_algorithm():
 
         return seeArray
     
-    def control_law(self, positions_matrix: List[Point], comunicate_matrix: List[List[int]]) -> List[Point]:
-        next_positions = copy.deepcopy(positions_matrix)
+    def control_law(self, positions_list: List[Point], comunicate_matrix: List[List[int]]) -> List[Point]:
+        next_positions = copy.deepcopy(positions_list)
 
-        for i in range(0, len(positions_matrix)):
+        for i in range(0, len(positions_list)):
             ctrl_law_Ux = 0.0
             ctrl_law_Uy = 0.0
             comunications = 1
 
-            for j in range(0, len(positions_matrix)):
-                if comunicate_matrix[i][j]:
+            for j in range(0, len(positions_list)):
+                if comunicate_matrix[i][j]: # if drone i can see drone j
                     comunications += 1
                     
-                    temp_Ux = comunicate_matrix[i][j] * (positions_matrix[i].x - positions_matrix[j].x)
+                    temp_Ux = comunicate_matrix[i][j] * (positions_list[i].x - positions_list[j].x)
                     ctrl_law_Ux = ctrl_law_Ux - temp_Ux
 
-                    temp_Uy = comunicate_matrix[i][j] * (positions_matrix[i].y - positions_matrix[j].y)
+                    temp_Uy = comunicate_matrix[i][j] * (positions_list[i].y - positions_list[j].y)
                     ctrl_law_Uy = ctrl_law_Uy - temp_Uy
 
-            next_positions[i].x = ctrl_law_Ux / comunications
-            next_positions[i].y = ctrl_law_Uy / comunications
+            # ctrl_law_Ux / comunications is how much drone i should move in the x direction
+            # ctrl_law_Uy / comunications is how much drone i should move in the y direction
+            next_positions[i].x += ctrl_law_Ux / comunications
+            next_positions[i].y += ctrl_law_Uy / comunications
 
         return next_positions
     
@@ -125,12 +130,17 @@ class control_algorithm():
     
     def consensus_algorithm(self):
     
-        pos_matrix: List[Point] = [drone.get_pos() for drone in self.drones]
-        pos_matrix.append(self.posRef)
+        pos_list: List[Point] = [drone.get_pos() for drone in self.drones]
+        self.trajectory_plot.append(pos_list)
+
+        # Check if the drones are close enough to each other
+        if max([pos.x for pos in pos_list]) - min([pos.x for pos in pos_list]) <= self.distance_threshold and max([pos.y for pos in pos_list]) - min([pos.y for pos in pos_list]) <= self.distance_threshold:
+            self.finish = True
+            return
 
         visions: List[List[int]] = []
         for i in range(0, self.number_of_drones):
-            visions.append(self.seeOtherDrones(pos_matrix[i], [pos_matrix[j] for j in range(0, len(pos_matrix)) if j != i]))
+            visions.append(self.seeOtherDrones(pos_list[i], [pos_list[j] for j in range(0, len(pos_list)) if j != i]))
 
         comunicate_matrix: List[List[int]] = []
         for i in range(0, self.number_of_drones):
@@ -147,33 +157,57 @@ class control_algorithm():
             self.finish = True
             return
         
-        next_positions: List[Point] = self.control_law(pos_matrix, comunicate_matrix)
-        
-        move_msg = Twist()
-
-        finishArray = [0] * self.number_of_drones
+        next_positions: List[Point] = self.control_law(pos_list, comunicate_matrix)
+        self.next_positions_plot.append(next_positions)
 
         for i in range(0, self.number_of_drones):
-            law_x = next_positions[i].x
-            law_y = next_positions[i].y
+            self.drones[i].move_to_pos(next_positions[i])
 
-            if abs(law_x) < self.distance_threshold:
-                move_msg.linear.x = 0.0
-            else:
-                move_msg.linear.x = np.clip(law_x, -self.max_velocity, self.max_velocity)
+    def generate_plot(self) -> None:
+        trajectory_2d = plt.figure()
+        trajectory_ax = trajectory_2d.add_subplot()
+        trajectory_ax.set_xlabel('x')
+        trajectory_ax.set_ylabel('y')
+        trajectory_ax.set_title('Consensus algorithm trajectory')
+        trajectory_ax.set_aspect('auto', adjustable='box')
 
-            if abs(law_y) < self.distance_threshold:
-                move_msg.linear.y = 0.0
-            else:
-                move_msg.linear.y = np.clip(law_y, -self.max_velocity, self.max_velocity)
+        for i in range(0, self.number_of_drones):
+            x = [pos.x for pos in [pos_list[i] for pos_list in self.trajectory_plot]]
+            y = [pos.y for pos in [pos_list[i] for pos_list in self.trajectory_plot]]
+            trajectory_ax.plot(x, y, label=f'Drone {i+1}')
+        
+        trajectory_ax.legend(loc='upper right')
 
-            self.drones[i].publish_velocity(move_msg)
+        fig, axs = plt.subplots(2, 1)
 
-            if move_msg.linear.x == 0.0 and move_msg.linear.y == 0.0:
-                finishArray[i] = 1
+        consensus_x_ax: plt.Axes = axs[0]
+        consensus_y_ax: plt.Axes = axs[1]
 
-        if sum(finishArray) == self.number_of_drones:
-            self.finish = True
+        consensus_x_ax.set_xlabel('iterations')
+        consensus_x_ax.set_ylabel('x')
+        consensus_x_ax.set_title('Consensus algorithm x coordinate')
+        consensus_x_ax.set_aspect('auto', adjustable='box')
+
+        for i in range(0, self.number_of_drones):
+            x = [next_pos.x for next_pos in [pos_list[i] for pos_list in self.next_positions_plot]]
+            consensus_x_ax.plot(x, label=f'Drone {i+1}')
+
+        consensus_x_ax.legend(loc='upper right')
+
+        consensus_y_ax.set_xlabel('iterations')
+        consensus_y_ax.set_ylabel('y')
+        consensus_y_ax.set_title('Consensus algorithm y coordinate')
+        consensus_y_ax.set_aspect('auto', adjustable='box')
+
+        for i in range(0, self.number_of_drones):
+            y = [next_pos.y for next_pos in [pos_list[i] for pos_list in self.next_positions_plot]]
+            consensus_y_ax.plot(y, label=f'Drone {i+1}')
+
+        consensus_y_ax.legend(loc='upper right')
+
+        plt.subplots_adjust(hspace=0.5)
+
+        plt.show()
 
 class tello_controller():
 
@@ -186,7 +220,11 @@ class tello_controller():
         
         self.sub_pos = node.create_subscription(Odometry, ns + '/odom', self.odom_callback, 1)
 
+        self.max_velocity = 0.03
+
         self.pos = None
+
+        self.at_target = False
 
     def check_subscribers(self, pub: Publisher, timeout: float = 1.0) -> bool:
         counter = 0
@@ -224,6 +262,18 @@ class tello_controller():
 
     def get_pos(self) -> Point:
         return self.pos
+    
+    def move_to_pos(self, target_pos: Point) -> None:
+        msg = Twist()
+
+        if self.at_target:
+            msg.linear.x = 0.0
+            msg.linear.y = 0.0
+        else:
+            msg.linear.x = np.clip(target_pos.x - self.pos.x, -self.max_velocity, self.max_velocity)
+            msg.linear.y = np.clip(target_pos.y - self.pos.y, -self.max_velocity, self.max_velocity)
+
+        self.publish_velocity(msg)
 
 if __name__ == '__main__':
     control_algorithm()
