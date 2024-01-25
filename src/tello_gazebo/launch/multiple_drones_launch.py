@@ -32,10 +32,10 @@ def generate_launch_description():
 
     starting_positions = [
         ["0", "0"],
-        ["2", "3"],
-        ["4", "1"],
-        ["3", "-3"],
-        ["-2", "3"]
+        ["2", "5"],
+        ["3", "3"],
+        ["4", "-1"],
+        ["-4", "5"]
     ]
 
     # Per-drone entities

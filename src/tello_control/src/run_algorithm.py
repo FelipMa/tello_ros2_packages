@@ -13,6 +13,7 @@ import threading
 from typing import List
 import copy
 import matplotlib.pyplot as plt
+import random
 
 class control_algorithm():
 
@@ -22,9 +23,11 @@ class control_algorithm():
         self.drones: List[tello_controller] = []
         self.number_of_drones = 5
         self.finish = False
-        self.distance_threshold = 0.1
+        self.distance_threshold = 0.05
+        self.consensus_agreement_threshold = 0.001
         self.trajectory_plot: List[List[Point]] = []
         self.next_positions_plot: List[List[Point]] = []
+        self.comunicate_matrix = None
 
         # Create tello controllers
         for i in range(1, self.number_of_drones + 1):
@@ -52,7 +55,7 @@ class control_algorithm():
                 time.sleep(0.05)
 
         # An arbitrary drone can start at the target position and stay there, in order to have a reference for the consensus algorithm
-        self.drones[0].at_target = True
+        # self.drones[0].at_target = True
 
         # Start the consensus algorithm
         while rclpy.ok():
@@ -99,6 +102,56 @@ class control_algorithm():
 
         return seeArray
     
+    def graph_based_on_vision(self, pos_list: List[Point]) -> List[List[int]]:
+        visions: List[List[int]] = []
+
+        for i in range(0, self.number_of_drones):
+            visions.append(self.seeOtherDrones(pos_list[i], [pos_list[j] for j in range(0, len(pos_list)) if j != i]))
+
+        graph: List[List[int]] = []
+        for i in range(0, self.number_of_drones):
+            graph.append(visions[i])
+            graph[i].insert(i, 0)
+
+        ref_vis = [0] * (self.number_of_drones+1)
+        graph.append(ref_vis)
+        
+        return graph
+    
+    def random_connected_graph(self, n) -> List[List[int]]:
+        # Initialize an empty matrix
+        graph_matrix = [[0 for _ in range(n)] for _ in range(n)]
+
+        while not self.graph_is_connected(graph_matrix):
+            # Randomly choose two nodes,
+            # Randomness implies that the graph is not necessarily a spanning tree
+            node1 = random.randint(0, n-1)
+            node2 = random.randint(0, n-1)
+            if node1 != node2 and graph_matrix[node1][node2] == 0:
+                graph_matrix[node1][node2] = 1
+                graph_matrix[node2][node1] = 1
+
+        return graph_matrix
+    
+    def graph_is_connected(self, graph):
+        n = len(graph)  # Number of vertices
+        visited = [False] * n
+
+        def dfs(node): # Depth-first search
+            visited[node] = True
+            for neighbor in range(n):
+                if graph[node][neighbor] == 1 and not visited[neighbor]:
+                    dfs(neighbor)
+
+        # Start DFS from any unvisited node
+        for node in range(n):
+            if not visited[node]:
+                dfs(node)
+                break
+
+        # Check if all nodes were visited
+        return all(visited)
+    
     def control_law(self, positions_list: List[Point], comunicate_matrix: List[List[int]]) -> List[Point]:
         next_positions = copy.deepcopy(positions_list)
 
@@ -119,16 +172,16 @@ class control_algorithm():
 
             # ctrl_law_Ux / comunications is how much drone i should move in the x direction
             # ctrl_law_Uy / comunications is how much drone i should move in the y direction
+            # when consensus is found, ctrl_law_Ux / comunications and ctrl_law_Uy / comunications tend to 0,
+            # so the drones next positions tend to be the same
             next_positions[i].x += ctrl_law_Ux / comunications
             next_positions[i].y += ctrl_law_Uy / comunications
 
         return next_positions
     
-    # to do, check if the graph is connected
-    def missionCanBeCompleted(self, comunicate_matrix: List[List[int]]):
-        return True
-    
     def consensus_algorithm(self):
+
+        consensus_agreed_pos_list: List[Point] = [drone.get_consensus_agreed_pos() for drone in self.drones] if all([drone.get_consensus_agreed_pos() for drone in self.drones]) else [drone.get_pos() for drone in self.drones]
     
         pos_list: List[Point] = [drone.get_pos() for drone in self.drones]
         self.trajectory_plot.append(pos_list)
@@ -138,33 +191,22 @@ class control_algorithm():
             self.finish = True
             return
 
-        visions: List[List[int]] = []
-        for i in range(0, self.number_of_drones):
-            visions.append(self.seeOtherDrones(pos_list[i], [pos_list[j] for j in range(0, len(pos_list)) if j != i]))
+        if self.comunicate_matrix is None:
+            self.comunicate_matrix = self.random_connected_graph(self.number_of_drones)
 
-        comunicate_matrix: List[List[int]] = []
-        for i in range(0, self.number_of_drones):
-            comunicate_matrix.append(visions[i])
-            comunicate_matrix[i].insert(i, 0)
-
-        ref_vis = [0] * (self.number_of_drones+1)
-        comunicate_matrix.append(ref_vis)
-
-        if self.missionCanBeCompleted(comunicate_matrix):
-            pass
-        else:
-            print("Mission can not be completed!")
-            self.finish = True
-            return
+        comunicate_matrix: List[List[int]] = self.comunicate_matrix
         
-        next_positions: List[Point] = self.control_law(pos_list, comunicate_matrix)
-        self.next_positions_plot.append(next_positions)
+        next_positions: List[Point] = self.control_law(consensus_agreed_pos_list, comunicate_matrix)
+
+        # Check if consensus is found
+        if max([pos.x for pos in consensus_agreed_pos_list]) - min([pos.x for pos in consensus_agreed_pos_list]) > self.consensus_agreement_threshold and max([pos.y for pos in consensus_agreed_pos_list]) - min([pos.y for pos in consensus_agreed_pos_list]) > self.consensus_agreement_threshold:
+            self.next_positions_plot.append(next_positions)
 
         for i in range(0, self.number_of_drones):
             self.drones[i].move_to_pos(next_positions[i])
 
     def generate_plot(self) -> None:
-        trajectory_2d = plt.figure()
+        trajectory_2d = plt.figure(figsize=(8, 8))
         trajectory_ax = trajectory_2d.add_subplot()
         trajectory_ax.set_xlabel('x')
         trajectory_ax.set_ylabel('y')
@@ -178,7 +220,7 @@ class control_algorithm():
         
         trajectory_ax.legend(loc='upper right')
 
-        fig, axs = plt.subplots(2, 1)
+        consensus_xy, axs = plt.subplots(2, 1, figsize=(8, 8))
 
         consensus_x_ax: plt.Axes = axs[0]
         consensus_y_ax: plt.Axes = axs[1]
@@ -207,6 +249,15 @@ class control_algorithm():
 
         plt.subplots_adjust(hspace=0.5)
 
+        print(x[-1])
+        print(y[-1])
+
+        local_time = time.localtime()
+        current_date = f"{local_time.tm_mday}-{local_time.tm_mon}-{local_time.tm_year}_{local_time.tm_hour}-{local_time.tm_min}-{local_time.tm_sec}"
+
+        trajectory_2d.savefig(f'pictures/trajectory/trajectory-{current_date}.png')
+        consensus_xy.savefig(f'pictures/consensus/consensus-{current_date}.png')
+
         plt.show()
 
 class tello_controller():
@@ -223,6 +274,7 @@ class tello_controller():
         self.max_velocity = 0.03
 
         self.pos = None
+        self.consensus_agreed_pos = None
 
         self.at_target = False
 
@@ -263,7 +315,11 @@ class tello_controller():
     def get_pos(self) -> Point:
         return self.pos
     
+    def get_consensus_agreed_pos(self) -> Point:
+        return self.consensus_agreed_pos
+    
     def move_to_pos(self, target_pos: Point) -> None:
+        self.consensus_agreed_pos = target_pos
         msg = Twist()
 
         if self.at_target:
