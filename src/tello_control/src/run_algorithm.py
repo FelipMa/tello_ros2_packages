@@ -14,6 +14,7 @@ from typing import List
 import copy
 import matplotlib.pyplot as plt
 import random
+import networkx as nx
 
 class control_algorithm():
 
@@ -152,28 +153,29 @@ class control_algorithm():
         # Check if all nodes were visited
         return all(visited)
     
-    def control_law(self, positions_list: List[Point], comunicate_matrix: List[List[int]]) -> List[Point]:
-        next_positions = copy.deepcopy(positions_list)
+    def control_law(self, information_state_list: List[Point], comunicate_matrix: List[List[int]]) -> List[Point]:
+        # information state is the coordination variable
+        # in our case, it is the position drones agree to go to
+        next_positions = copy.deepcopy(information_state_list)
 
-        for i in range(0, len(positions_list)):
+        for i in range(0, len(information_state_list)):
             ctrl_law_Ux = 0.0
             ctrl_law_Uy = 0.0
             comunications = 1
 
-            for j in range(0, len(positions_list)):
+            for j in range(0, len(information_state_list)):
                 if comunicate_matrix[i][j]: # if drone i can see drone j
                     comunications += 1
                     
-                    temp_Ux = comunicate_matrix[i][j] * (positions_list[i].x - positions_list[j].x)
+                    temp_Ux = comunicate_matrix[i][j] * (information_state_list[i].x - information_state_list[j].x)
                     ctrl_law_Ux = ctrl_law_Ux - temp_Ux
 
-                    temp_Uy = comunicate_matrix[i][j] * (positions_list[i].y - positions_list[j].y)
+                    temp_Uy = comunicate_matrix[i][j] * (information_state_list[i].y - information_state_list[j].y)
                     ctrl_law_Uy = ctrl_law_Uy - temp_Uy
 
-            # ctrl_law_Ux / comunications is how much drone i should move in the x direction
-            # ctrl_law_Uy / comunications is how much drone i should move in the y direction
-            # when consensus is found, ctrl_law_Ux / comunications and ctrl_law_Uy / comunications tend to 0,
-            # so the drones next positions tend to be the same
+            # ctrl_law_U is the information control input
+            # ctrl_law_U / comunications is how much drone i should move in the direction, based on our own rule
+            # when consensus is found, ctrl_law_U tends to be 0, so the drones next positions tend to be the same
             next_positions[i].x += ctrl_law_Ux / comunications
             next_positions[i].y += ctrl_law_Uy / comunications
 
@@ -206,8 +208,8 @@ class control_algorithm():
             self.drones[i].move_to_pos(next_positions[i])
 
     def generate_plot(self) -> None:
-        trajectory_2d = plt.figure(figsize=(8, 8))
-        trajectory_ax = trajectory_2d.add_subplot()
+        trajectory_2d_fig = plt.figure(figsize=(6, 6))
+        trajectory_ax = trajectory_2d_fig.add_subplot()
         trajectory_ax.set_xlabel('x')
         trajectory_ax.set_ylabel('y')
         trajectory_ax.set_title('Consensus algorithm trajectory')
@@ -220,7 +222,7 @@ class control_algorithm():
         
         trajectory_ax.legend(loc='upper right')
 
-        consensus_xy, axs = plt.subplots(2, 1, figsize=(8, 8))
+        consensus_xy_fig, axs = plt.subplots(2, 1, figsize=(10, 9))
 
         consensus_x_ax: plt.Axes = axs[0]
         consensus_y_ax: plt.Axes = axs[1]
@@ -231,8 +233,9 @@ class control_algorithm():
         consensus_x_ax.set_aspect('auto', adjustable='box')
 
         for i in range(0, self.number_of_drones):
-            x = [next_pos.x for next_pos in [pos_list[i] for pos_list in self.next_positions_plot]]
-            consensus_x_ax.plot(x, label=f'Drone {i+1}')
+            y = [next_pos.x for next_pos in [pos_list[i] for pos_list in self.next_positions_plot]]
+            x = [i for i in range(0, len(y))]
+            consensus_x_ax.step(x, y, label=f'Drone {i+1}', where='post')
 
         consensus_x_ax.legend(loc='upper right')
 
@@ -243,20 +246,35 @@ class control_algorithm():
 
         for i in range(0, self.number_of_drones):
             y = [next_pos.y for next_pos in [pos_list[i] for pos_list in self.next_positions_plot]]
-            consensus_y_ax.plot(y, label=f'Drone {i+1}')
+            x = [i for i in range(0, len(y))]
+            consensus_y_ax.step(x, y, label=f'Drone {i+1}', where='post')
 
         consensus_y_ax.legend(loc='upper right')
 
         plt.subplots_adjust(hspace=0.5)
 
-        print(x[-1])
-        print(y[-1])
+        #print(x[-1])
+        #print(y[-1])
 
         local_time = time.localtime()
         current_date = f"{local_time.tm_mday}-{local_time.tm_mon}-{local_time.tm_year}_{local_time.tm_hour}-{local_time.tm_min}-{local_time.tm_sec}"
 
-        trajectory_2d.savefig(f'pictures/trajectory/trajectory-{current_date}.png')
-        consensus_xy.savefig(f'pictures/consensus/consensus-{current_date}.png')
+        graph_fig = plt.figure(figsize=(6, 6))
+        graph_ax = graph_fig.add_subplot()
+
+        graph_ax.set_title('Communication graph')
+
+        graph = nx.from_numpy_array(np.array(self.comunicate_matrix))
+
+        label_dict = {}
+        for i in range(0, self.number_of_drones):
+            label_dict[i] = f'D{i+1}'
+
+        nx.draw_circular(graph, labels=label_dict, with_labels=True, ax=graph_ax)
+
+        trajectory_2d_fig.savefig(f'pictures/trajectory/trajectory-{current_date}.png')
+        consensus_xy_fig.savefig(f'pictures/consensus/consensus-{current_date}.png')
+        graph_fig.savefig(f'pictures/graph/graph-{current_date}.png')
 
         plt.show()
 
@@ -319,13 +337,14 @@ class tello_controller():
         return self.consensus_agreed_pos
     
     def move_to_pos(self, target_pos: Point) -> None:
-        self.consensus_agreed_pos = target_pos
         msg = Twist()
 
         if self.at_target:
+            self.consensus_agreed_pos = self.pos
             msg.linear.x = 0.0
             msg.linear.y = 0.0
         else:
+            self.consensus_agreed_pos = target_pos
             msg.linear.x = np.clip(target_pos.x - self.pos.x, -self.max_velocity, self.max_velocity)
             msg.linear.y = np.clip(target_pos.y - self.pos.y, -self.max_velocity, self.max_velocity)
 
