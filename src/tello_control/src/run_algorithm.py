@@ -113,9 +113,6 @@ class control_algorithm():
         for i in range(0, self.number_of_drones):
             graph.append(visions[i])
             graph[i].insert(i, 0)
-
-        ref_vis = [0] * (self.number_of_drones+1)
-        graph.append(ref_vis)
         
         return graph
     
@@ -193,8 +190,9 @@ class control_algorithm():
             self.finish = True
             return
 
-        if self.comunicate_matrix is None:
-            self.comunicate_matrix = self.random_connected_graph(self.number_of_drones)
+        #if self.comunicate_matrix is None:
+        #    self.comunicate_matrix = self.random_connected_graph(self.number_of_drones)
+        self.comunicate_matrix = self.graph_based_on_vision(pos_list)
 
         comunicate_matrix: List[List[int]] = self.comunicate_matrix
         
@@ -212,7 +210,8 @@ class control_algorithm():
         trajectory_ax = trajectory_2d_fig.add_subplot()
         trajectory_ax.set_xlabel('x')
         trajectory_ax.set_ylabel('y')
-        trajectory_ax.set_title('Consensus algorithm trajectory')
+        plt.suptitle("Consensus algorithm trajectory")
+        trajectory_ax.set_title(f'Consensus point: X = {self.trajectory_plot[-1][0].x}, Y = {self.trajectory_plot[-1][0].y}', fontsize=10)
         trajectory_ax.set_aspect('auto', adjustable='box')
 
         for i in range(0, self.number_of_drones):
@@ -252,9 +251,6 @@ class control_algorithm():
         consensus_y_ax.legend(loc='upper right')
 
         plt.subplots_adjust(hspace=0.5)
-
-        #print(x[-1])
-        #print(y[-1])
 
         local_time = time.localtime()
         current_date = f"{local_time.tm_mday}-{local_time.tm_mon}-{local_time.tm_year}_{local_time.tm_hour}-{local_time.tm_min}-{local_time.tm_sec}"

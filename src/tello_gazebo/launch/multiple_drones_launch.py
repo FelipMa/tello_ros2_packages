@@ -35,7 +35,7 @@ def generate_launch_description():
         ["2", "5"],
         ["3", "3"],
         ["4", "-1"],
-        ["-4", "5"]
+        ["-3", "5"]
     ]
 
     # Per-drone entities
