@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 
+from pathlib import Path
 import time
 import rclpy
 from rclpy.node import Node
@@ -29,6 +30,8 @@ class control_algorithm():
         self.trajectory_plot: List[List[Point]] = []
         self.next_positions_plot: List[List[Point]] = []
         self.comunicate_matrix = None
+        self.reference_state = None
+        self.last_ref_state_timestamp = None
 
         # Create tello controllers
         for i in range(1, self.number_of_drones + 1):
@@ -54,9 +57,6 @@ class control_algorithm():
                 break
             else:
                 time.sleep(0.05)
-
-        # An arbitrary drone can start at the target position and stay there, in order to have a reference for the consensus algorithm
-        # self.drones[0].at_target = True
 
         # Start the consensus algorithm
         while rclpy.ok():
@@ -155,12 +155,13 @@ class control_algorithm():
         # in our case, it is the position drones agree to go to
         next_positions = copy.deepcopy(information_state_list)
 
-        for i in range(0, len(information_state_list)):
+        for i in range(0, len(information_state_list) - 1): # minus 1 because the last element is the reference state
+            # ctrl_law_U is the information control input
             ctrl_law_Ux = 0.0
             ctrl_law_Uy = 0.0
             comunications = 1
 
-            for j in range(0, len(information_state_list)):
+            for j in range(0, len(information_state_list) - 1): # minus 1 because the last element is the reference state
                 if comunicate_matrix[i][j]: # if drone i can see drone j
                     comunications += 1
                     
@@ -170,7 +171,9 @@ class control_algorithm():
                     temp_Uy = comunicate_matrix[i][j] * (information_state_list[i].y - information_state_list[j].y)
                     ctrl_law_Uy = ctrl_law_Uy - temp_Uy
 
-            # ctrl_law_U is the information control input
+            ctrl_law_Ux -= comunicate_matrix[i][-1] * (information_state_list[i].x - information_state_list[-1].x)
+            ctrl_law_Uy -= comunicate_matrix[i][-1] * (information_state_list[i].y - information_state_list[-1].y)
+
             # ctrl_law_U / comunications is how much drone i should move in the direction, based on our own rule
             # when consensus is found, ctrl_law_U tends to be 0, so the drones next positions tend to be the same
             next_positions[i].x += ctrl_law_Ux / comunications
@@ -178,11 +181,50 @@ class control_algorithm():
 
         return next_positions
     
+    def calculate_next_reference_state(self) -> None:
+        initial_pos = Point(x=-1.5, y=0.5, z=0.0)
+        final_pos = Point(x=1.5, y=3.5, z=0.0)
+
+        if self.reference_state is None:
+            self.reference_state = initial_pos
+            self.last_ref_state_timestamp = time.time()
+            return
+        
+        if abs(self.reference_state.x - final_pos.x) <= self.consensus_agreement_threshold and abs(self.reference_state.y - final_pos.y) <= self.consensus_agreement_threshold:
+            return
+        
+        ref_state_vel = 0.3
+
+        now = time.time()
+        time_elapsed = now - self.last_ref_state_timestamp
+        self.last_ref_state_timestamp = now
+
+        space_moved = ref_state_vel * time_elapsed
+
+        if abs(self.reference_state.x - final_pos.x) > self.consensus_agreement_threshold:
+            if self.reference_state.x < final_pos.x:
+                self.reference_state.x += space_moved
+            else:
+                self.reference_state.x -= space_moved
+
+        if abs(self.reference_state.y - final_pos.y) > self.consensus_agreement_threshold:
+            if self.reference_state.y < final_pos.y:
+                self.reference_state.y += space_moved
+            else:
+                self.reference_state.y -= space_moved
+    
     def consensus_algorithm(self):
+        # Calculate next reference state
+        self.calculate_next_reference_state()
+        now_ref_state = Point(x=self.reference_state.x, y=self.reference_state.y, z=self.reference_state.z)
 
         consensus_agreed_pos_list: List[Point] = [drone.get_consensus_agreed_pos() for drone in self.drones] if all([drone.get_consensus_agreed_pos() for drone in self.drones]) else [drone.get_pos() for drone in self.drones]
+
+        # Add reference state to information state list
+        consensus_agreed_pos_list.append(now_ref_state)
     
         pos_list: List[Point] = [drone.get_pos() for drone in self.drones]
+        pos_list.append(now_ref_state)
         self.trajectory_plot.append(pos_list)
 
         # Check if the drones are close enough to each other
@@ -190,9 +232,8 @@ class control_algorithm():
             self.finish = True
             return
 
-        #if self.comunicate_matrix is None:
-        #    self.comunicate_matrix = self.random_connected_graph(self.number_of_drones)
-        self.comunicate_matrix = self.graph_based_on_vision(pos_list)
+        if self.comunicate_matrix is None:
+            self.comunicate_matrix = self.random_connected_graph(self.number_of_drones + 1)
 
         comunicate_matrix: List[List[int]] = self.comunicate_matrix
         
@@ -218,7 +259,11 @@ class control_algorithm():
             x = [pos.x for pos in [pos_list[i] for pos_list in self.trajectory_plot]]
             y = [pos.y for pos in [pos_list[i] for pos_list in self.trajectory_plot]]
             trajectory_ax.plot(x, y, label=f'Drone {i+1}')
-        
+
+        x = [pos.x for pos in [pos_list[-1] for pos_list in self.trajectory_plot]]
+        y = [pos.y for pos in [pos_list[-1] for pos_list in self.trajectory_plot]]
+        trajectory_ax.plot(x, y, label='Reference', color='black', linestyle='dashed')
+
         trajectory_ax.legend(loc='upper right')
 
         consensus_xy_fig, axs = plt.subplots(2, 1, figsize=(10, 9))
@@ -266,13 +311,23 @@ class control_algorithm():
         for i in range(0, self.number_of_drones):
             label_dict[i] = f'D{i+1}'
 
+        label_dict[self.number_of_drones] = 'Ref'
+
         nx.draw_circular(graph, labels=label_dict, with_labels=True, ax=graph_ax)
 
-        trajectory_2d_fig.savefig(f'pictures/trajectory/trajectory-{current_date}.png')
-        consensus_xy_fig.savefig(f'pictures/consensus/consensus-{current_date}.png')
-        graph_fig.savefig(f'pictures/graph/graph-{current_date}.png')
+        path = 'pictures/reference_rendezvous'
+        self.create_folder(path)
+        trajectory_2d_fig.savefig(f'{path}/trajectory/{current_date}.png')
+        consensus_xy_fig.savefig(f'{path}/consensus/{current_date}.png')
+        graph_fig.savefig(f'{path}/graph/{current_date}.png')
 
         plt.show()
+
+    def create_folder(self, path: str) -> None:
+        Path(path).mkdir(parents=True, exist_ok=True)
+        Path(path + '/trajectory').mkdir(parents=True, exist_ok=True)
+        Path(path + '/consensus').mkdir(parents=True, exist_ok=True)
+        Path(path + '/graph').mkdir(parents=True, exist_ok=True)
 
 class tello_controller():
 
