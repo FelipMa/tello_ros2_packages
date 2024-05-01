@@ -182,8 +182,8 @@ class control_algorithm():
         return next_positions
     
     def calculate_next_reference_state(self) -> None:
-        initial_pos = Point(x=-1.5, y=0.5, z=0.0)
-        final_pos = Point(x=1.5, y=3.5, z=0.0)
+        initial_pos = Point(x=-2.0, y=1.0, z=0.0)
+        final_pos = Point(x=2.0, y=3.0, z=0.0)
 
         if self.reference_state is None:
             self.reference_state = initial_pos
@@ -193,25 +193,27 @@ class control_algorithm():
         if abs(self.reference_state.x - final_pos.x) <= self.consensus_agreement_threshold and abs(self.reference_state.y - final_pos.y) <= self.consensus_agreement_threshold:
             return
         
-        ref_state_vel = 0.3
+        ref_state_vel_x = 0.3
+        ref_state_vel_y = 0.15
 
         now = time.time()
         time_elapsed = now - self.last_ref_state_timestamp
         self.last_ref_state_timestamp = now
 
-        space_moved = ref_state_vel * time_elapsed
+        space_moved_x = ref_state_vel_x * time_elapsed
+        space_moved_y = ref_state_vel_y * time_elapsed
 
         if abs(self.reference_state.x - final_pos.x) > self.consensus_agreement_threshold:
             if self.reference_state.x < final_pos.x:
-                self.reference_state.x += space_moved
+                self.reference_state.x += space_moved_x
             else:
-                self.reference_state.x -= space_moved
+                self.reference_state.x -= space_moved_x
 
         if abs(self.reference_state.y - final_pos.y) > self.consensus_agreement_threshold:
             if self.reference_state.y < final_pos.y:
-                self.reference_state.y += space_moved
+                self.reference_state.y += space_moved_y
             else:
-                self.reference_state.y -= space_moved
+                self.reference_state.y -= space_moved_y
     
     def consensus_algorithm(self):
         # Calculate next reference state
