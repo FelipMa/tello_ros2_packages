@@ -20,7 +20,7 @@ find_package(ament_cmake REQUIRED)
 
 ## Install Python scripts
 install(
-  PROGRAMS src/keyboard_teleop.py src/rendezvous.py src/reference_state_rendezvous.py
+  PROGRAMS src/tello_controller.py src/keyboard_teleop.py src/rendezvous.py src/reference_state_rendezvous.py src/distributed_formation_control.py
   DESTINATION lib/${PROJECT_NAME}
 )
 

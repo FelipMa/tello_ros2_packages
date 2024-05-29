@@ -3,12 +3,8 @@
 from pathlib import Path
 import time
 import rclpy
-from rclpy.node import Node
-from rclpy.publisher import Publisher
 from geometry_msgs.msg import Twist
 from geometry_msgs.msg import Point
-from nav_msgs.msg import Odometry
-from std_msgs.msg import Empty
 import numpy as np
 import threading
 from typing import List
@@ -16,6 +12,7 @@ import copy
 import matplotlib.pyplot as plt
 import random
 import networkx as nx
+from tello_controller import tello_controller
 
 class control_algorithm():
 
@@ -278,78 +275,6 @@ class control_algorithm():
         Path(path + '/trajectory').mkdir(parents=True, exist_ok=True)
         Path(path + '/consensus').mkdir(parents=True, exist_ok=True)
         Path(path + '/graph').mkdir(parents=True, exist_ok=True)
-
-class tello_controller():
-
-    def __init__(self, node: Node, ns: str):
-        self.node = node
-
-        self.pub_takeoff = node.create_publisher(Empty, ns + '/takeoff', 1)
-        self.pub_land = node.create_publisher(Empty, ns + '/land', 1)
-        self.pub_cmd_vel = node.create_publisher(Twist, ns + '/cmd_vel', 1)
-        
-        self.sub_pos = node.create_subscription(Odometry, ns + '/odom', self.odom_callback, 1)
-
-        self.max_velocity = 0.03
-
-        self.pos = None
-        self.consensus_agreed_pos = None
-
-        self.at_target = False
-
-    def check_subscribers(self, pub: Publisher, timeout: float = 1.0) -> bool:
-        counter = 0
-        while True:
-            connections = pub.get_subscription_count()
-            if connections == 1:
-                return True
-            elif connections > 1:
-                self.node.get_logger().info('Multiple subscribers connected to ' + pub.topic_name + ' (' + str(connections) + ')')
-                return True
-            else:
-                if counter >= timeout:
-                    self.node.get_logger().info('No subscribers connected to ' + pub.topic_name)
-                    return False
-                else:
-                    counter += 0.05
-                    time.sleep(0.05)
-        
-    def takeoff(self) -> None:
-        cmd = Empty()
-        if self.check_subscribers(self.pub_takeoff):
-            self.pub_takeoff.publish(cmd)
-
-    def land(self) -> None:
-        cmd = Empty()
-        if self.check_subscribers(self.pub_land):
-            self.pub_land.publish(cmd)
-
-    def publish_velocity(self, cmd: Twist) -> None:
-        if self.check_subscribers(self.pub_cmd_vel):
-            self.pub_cmd_vel.publish(cmd)
-
-    def odom_callback(self, msg: Odometry) -> None:
-        self.pos = msg.pose.pose.position
-
-    def get_pos(self) -> Point:
-        return self.pos
-    
-    def get_consensus_agreed_pos(self) -> Point:
-        return self.consensus_agreed_pos
-    
-    def move_to_pos(self, target_pos: Point) -> None:
-        msg = Twist()
-
-        if self.at_target:
-            self.consensus_agreed_pos = self.pos
-            msg.linear.x = 0.0
-            msg.linear.y = 0.0
-        else:
-            self.consensus_agreed_pos = target_pos
-            msg.linear.x = np.clip(target_pos.x - self.pos.x, -self.max_velocity, self.max_velocity)
-            msg.linear.y = np.clip(target_pos.y - self.pos.y, -self.max_velocity, self.max_velocity)
-
-        self.publish_velocity(msg)
 
 if __name__ == '__main__':
     control_algorithm()
