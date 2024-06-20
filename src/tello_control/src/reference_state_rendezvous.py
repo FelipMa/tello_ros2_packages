@@ -171,7 +171,7 @@ class control_algorithm():
             ctrl_law_Ux -= comunicate_matrix[i][-1] * (information_state_list[i].x - information_state_list[-1].x)
             ctrl_law_Uy -= comunicate_matrix[i][-1] * (information_state_list[i].y - information_state_list[-1].y)
 
-            # ctrl_law_U / comunications is how much drone i should move in the direction, based on our own rule
+            # ctrl_law_U / comunications is how much distance drone i should move in the direction, based on our own rule
             # when consensus is found, ctrl_law_U tends to be 0, so the drones next positions tend to be the same
             next_positions[i].x += ctrl_law_Ux / comunications
             next_positions[i].y += ctrl_law_Uy / comunications
@@ -217,7 +217,7 @@ class control_algorithm():
         self.calculate_next_reference_state()
         now_ref_state = Point(x=self.reference_state.x, y=self.reference_state.y, z=self.reference_state.z)
 
-        consensus_agreed_pos_list: List[Point] = [drone.get_consensus_agreed_pos() for drone in self.drones] if all([drone.get_consensus_agreed_pos() for drone in self.drones]) else [drone.get_pos() for drone in self.drones]
+        consensus_agreed_pos_list: List[Point] = [drone.get_consensus_agreed_state() for drone in self.drones] if all([drone.get_consensus_agreed_state() for drone in self.drones]) else [drone.get_pos() for drone in self.drones]
 
         # Add reference state to information state list
         consensus_agreed_pos_list.append(now_ref_state)
@@ -244,6 +244,7 @@ class control_algorithm():
 
         for i in range(0, self.number_of_drones):
             self.drones[i].move_to_pos(next_positions[i])
+            self.drones[i].set_consensus_agreed_state(next_positions[i])
 
     def generate_plot(self) -> None:
         trajectory_2d_fig = plt.figure(figsize=(6, 6))
@@ -296,9 +297,6 @@ class control_algorithm():
 
         plt.subplots_adjust(hspace=0.5)
 
-        local_time = time.localtime()
-        current_date = f"{local_time.tm_mday}-{local_time.tm_mon}-{local_time.tm_year}_{local_time.tm_hour}-{local_time.tm_min}-{local_time.tm_sec}"
-
         graph_fig = plt.figure(figsize=(6, 6))
         graph_ax = graph_fig.add_subplot()
 
@@ -314,6 +312,9 @@ class control_algorithm():
 
         nx.draw_circular(graph, labels=label_dict, with_labels=True, ax=graph_ax)
 
+        local_time = time.localtime()
+        current_date = f"{local_time.tm_mday}-{local_time.tm_mon}-{local_time.tm_year}_{local_time.tm_hour}-{local_time.tm_min}-{local_time.tm_sec}"
+        
         path = 'pictures/reference_rendezvous'
         self.create_folder(path)
         trajectory_2d_fig.savefig(f'{path}/trajectory/{current_date}.png')

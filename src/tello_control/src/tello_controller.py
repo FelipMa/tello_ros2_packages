@@ -23,7 +23,7 @@ class tello_controller():
         self.max_velocity = 0.03
 
         self.pos = None
-        self.consensus_agreed_pos = None
+        self.consensus_agreed_state = None
 
         self.at_target = False
 
@@ -64,18 +64,20 @@ class tello_controller():
     def get_pos(self) -> Point:
         return self.pos
     
-    def get_consensus_agreed_pos(self) -> Point:
-        return self.consensus_agreed_pos
+    def get_consensus_agreed_state(self) -> Point:
+        return self.consensus_agreed_state
+    
+    def set_consensus_agreed_state(self, pos: Point) -> None:
+        self.consensus_agreed_state = pos
     
     def move_to_pos(self, target_pos: Point) -> None:
         msg = Twist()
 
         if self.at_target:
-            self.consensus_agreed_pos = self.pos
+            self.consensus_agreed_state = self.pos
             msg.linear.x = 0.0
             msg.linear.y = 0.0
         else:
-            self.consensus_agreed_pos = target_pos
             msg.linear.x = np.clip(target_pos.x - self.pos.x, -self.max_velocity, self.max_velocity)
             msg.linear.y = np.clip(target_pos.y - self.pos.y, -self.max_velocity, self.max_velocity)
 

@@ -20,14 +20,15 @@ class control_algorithm():
         rclpy.init()
         self.node = rclpy.create_node('control_algorithm')
         self.drones: List[tello_controller] = []
-        self.number_of_drones = 5
+        self.number_of_drones = 4
         self.finish = False
         self.distance_threshold = 0.05
-        self.consensus_agreement_threshold = 0.001
+        self.position_threshold = 0.001
         self.trajectory_plot: List[List[Point]] = []
-        self.next_positions_plot: List[List[Point]] = []
+        self.virtual_leader_instantiations_plot: List[List[Point]] = []
         self.comunicate_matrix = None
         self.virtual_leader_pos = None
+        self.last_virtual_leader_timestamp = None
 
         # Create tello controllers
         for i in range(1, self.number_of_drones + 1):
@@ -37,6 +38,10 @@ class control_algorithm():
         # Spin the node in a separate thread
         spin_node_thread = threading.Thread(target=rclpy.spin, args=(self.node,))
         spin_node_thread.start()
+
+        # start timeout thread
+        timeout_thread = threading.Thread(target=self.timeout_thread, args=(15,))
+        timeout_thread.start()
 
         # Take off
         for drone in self.drones:
@@ -66,12 +71,16 @@ class control_algorithm():
         self.generate_plot()
 
         rclpy.shutdown()
+    
+    def timeout_thread(self, timeout: int) -> None:
+        time.sleep(timeout)
+        self.finish = True
 
     def getUp(self):
         msg = Twist()
 
         for i in range(0, self.number_of_drones):
-            msg.linear.z = 0.05 * (i+1)
+            msg.linear.z = 0.05
             self.drones[i].publish_velocity(msg)
 
         time.sleep(1)
@@ -121,16 +130,112 @@ class control_algorithm():
         # Check if all nodes were visited
         return all(visited)
     
-    def control_law(self, information_state_list: List[Point], comunicate_matrix: List[List[int]]) -> List[Point]:
-        # TODO: Implement the control law
-        return
+    def calculate_next_consensus_state(self, information_state_list: List[Point], comunicate_matrix: List[List[int]]) -> List[Point]:
+        # information state is the coordination variable
+        # in our case, it is the position of the virtual leader
+        next_virtual_leader_instantiations = copy.deepcopy(information_state_list)
+
+        for i in range(0, len(information_state_list) - 1): # minus 1 because the last element is the virtual leader
+            # ctrl_law_U is the information control input
+            ctrl_law_Ux = 0.0
+            ctrl_law_Uy = 0.0
+            comunications = 1
+
+            for j in range(0, len(information_state_list) - 1): # minus 1 because the last element is the virtual leader
+                if comunicate_matrix[i][j]: # if drone i can see drone j
+                    comunications += 1
+
+                    if information_state_list[j] is not None:
+                        if information_state_list[i] is None:
+                            information_state_list[i] = Point(x=0.0, y=0.0, z=0.0)
+
+                        ctrl_law_Ux -= comunicate_matrix[i][j] * (information_state_list[i].x - information_state_list[j].x)
+                        ctrl_law_Uy -= comunicate_matrix[i][j] * (information_state_list[i].y - information_state_list[j].y)
+
+            if comunicate_matrix[i][-1]:
+                comunications += 1
+
+                if information_state_list[i] is None:
+                    information_state_list[i] = Point(x=0.0, y=0.0, z=0.0)
+
+                ctrl_law_Ux -= comunicate_matrix[i][-1] * (information_state_list[i].x - information_state_list[-1].x)
+                ctrl_law_Uy -= comunicate_matrix[i][-1] * (information_state_list[i].y - information_state_list[-1].y)
+
+            # ctrl_law_U / comunications is how much distance the instanciated leader should "move"
+            if comunications > 1:
+                if next_virtual_leader_instantiations[i] is None:
+                    next_virtual_leader_instantiations[i] = Point(x=0.0, y=0.0, z=0.0)
+                    
+                next_virtual_leader_instantiations[i].x += ctrl_law_Ux / comunications
+                next_virtual_leader_instantiations[i].y += ctrl_law_Uy / comunications
+
+        return next_virtual_leader_instantiations
     
     def calculate_next_virtual_leader_pos(self) -> None:
-        # TODO: Implement the calculation of the next virtual leader position
+        initial_pos = Point(x=0.0, y=0.0, z=0.0)
+        final_pos = Point(x=5.0, y=0.0, z=0.0)
+
+        if self.virtual_leader_pos is None:
+            self.virtual_leader_pos = copy.deepcopy(initial_pos)
+            self.last_virtual_leader_timestamp = time.time()
+            return
+        
+        if abs(self.virtual_leader_pos.x - final_pos.x) <= self.position_threshold and abs(self.virtual_leader_pos.y - final_pos.y) <= self.position_threshold:
+            return
+
+        vel_x = 0.3
+        rvel_y = 0.3
+
+        now = time.time()
+        time_elapsed = now - self.last_virtual_leader_timestamp
+        self.last_virtual_leader_timestamp = now
+
+        space_moved_x = vel_x * time_elapsed
+        space_moved_y = rvel_y * time_elapsed
+
+        if abs(self.virtual_leader_pos.x - final_pos.x) > self.position_threshold:
+            if self.virtual_leader_pos.x < final_pos.x:
+                self.virtual_leader_pos.x += space_moved_x
+            else:
+                self.virtual_leader_pos.x -= space_moved_x
+
+        if abs(self.virtual_leader_pos.y - final_pos.y) > self.position_threshold:
+            if self.virtual_leader_pos.y < final_pos.y:
+                self.virtual_leader_pos.y += space_moved_y
+            else:
+                self.virtual_leader_pos.y -= space_moved_y
+
         return
     
     def consensus_algorithm(self):
-        # TODO: Implement the consensus algorithm
+        self.calculate_next_virtual_leader_pos()
+
+        now_virtual_leader_pos = copy.deepcopy(self.virtual_leader_pos)
+
+        pos_list: List[Point] = [drone.get_pos() for drone in self.drones]
+        pos_list.append(now_virtual_leader_pos)
+        self.trajectory_plot.append(pos_list)
+
+        consensus_agreed_leader_pos_list: List[Point] = [drone.get_consensus_agreed_state() for drone in self.drones] # initially some element can be None
+
+        consensus_agreed_leader_pos_list.append(now_virtual_leader_pos)
+
+        if self.comunicate_matrix is None:
+            self.comunicate_matrix = self.random_connected_graph(self.number_of_drones + 1)
+
+        comunicate_matrix: List[List[int]] = self.comunicate_matrix
+
+        next_virtual_leader_instantiations: List[Point] = self.calculate_next_consensus_state(consensus_agreed_leader_pos_list, comunicate_matrix)
+
+        self.virtual_leader_instantiations_plot.append(next_virtual_leader_instantiations)
+
+        #TODO according to leader position, calculate the control inputs
+        #TODO according to the control inputs, calculate the next position for each drone
+
+        for i in range(0, self.number_of_drones):
+            self.drones[i].set_consensus_agreed_state(next_virtual_leader_instantiations[i])
+            # TODO: move drones to next positions based on virtual leader positions
+
         return
 
     def generate_plot(self) -> None:
@@ -164,7 +269,7 @@ class control_algorithm():
         consensus_x_ax.set_aspect('auto', adjustable='box')
 
         for i in range(0, self.number_of_drones):
-            y = [next_pos.x for next_pos in [pos_list[i] for pos_list in self.next_positions_plot]]
+            y = [next_pos.x for next_pos in [pos_list[i] for pos_list in self.virtual_leader_instantiations_plot]]
             x = [i for i in range(0, len(y))]
             consensus_x_ax.step(x, y, label=f'Drone {i+1}', where='post')
 
@@ -176,7 +281,7 @@ class control_algorithm():
         consensus_y_ax.set_aspect('auto', adjustable='box')
 
         for i in range(0, self.number_of_drones):
-            y = [next_pos.y for next_pos in [pos_list[i] for pos_list in self.next_positions_plot]]
+            y = [next_pos.y for next_pos in [pos_list[i] for pos_list in self.virtual_leader_instantiations_plot]]
             x = [i for i in range(0, len(y))]
             consensus_y_ax.step(x, y, label=f'Drone {i+1}', where='post')
 

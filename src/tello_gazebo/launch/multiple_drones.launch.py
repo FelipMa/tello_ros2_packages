@@ -8,7 +8,7 @@ from launch_ros.actions import Node
 from launch.actions import ExecuteProcess, DeclareLaunchArgument, OpaqueFunction
 from launch.substitutions import LaunchConfiguration
 
-def launch_setup(context, *args, **kwargs):
+def launch_setup(context):
     formation = LaunchConfiguration('formation').perform(context)
 
     if formation == 'square':

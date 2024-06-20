@@ -166,7 +166,7 @@ class control_algorithm():
                     ctrl_law_Uy = ctrl_law_Uy - temp_Uy
 
             # ctrl_law_U is the information control input
-            # ctrl_law_U / comunications is how much drone i should move in the direction, based on our own rule
+            # ctrl_law_U / comunications is how much distance drone i should move in the direction, based on our own rule
             # when consensus is found, ctrl_law_U tends to be 0, so the drones next positions tend to be the same
             next_positions[i].x += ctrl_law_Ux / comunications
             next_positions[i].y += ctrl_law_Uy / comunications
@@ -175,7 +175,7 @@ class control_algorithm():
     
     def consensus_algorithm(self):
 
-        consensus_agreed_pos_list: List[Point] = [drone.get_consensus_agreed_pos() for drone in self.drones] if all([drone.get_consensus_agreed_pos() for drone in self.drones]) else [drone.get_pos() for drone in self.drones]
+        consensus_agreed_pos_list: List[Point] = [drone.get_consensus_agreed_state() for drone in self.drones] if all([drone.get_consensus_agreed_state() for drone in self.drones]) else [drone.get_pos() for drone in self.drones]
     
         pos_list: List[Point] = [drone.get_pos() for drone in self.drones]
         self.trajectory_plot.append(pos_list)
@@ -198,6 +198,7 @@ class control_algorithm():
 
         for i in range(0, self.number_of_drones):
             self.drones[i].move_to_pos(next_positions[i])
+            self.drones[i].set_consensus_agreed_state(next_positions[i])
 
     def generate_plot(self) -> None:
         trajectory_2d_fig = plt.figure(figsize=(6, 6))
