@@ -158,19 +158,17 @@ class control_algorithm():
             ctrl_law_Uy = 0.0
             comunications = 1
 
-            for j in range(0, len(information_state_list) - 1): # minus 1 because the last element is the reference state
+            for j in range(0, len(information_state_list)): # including the reference state
                 if comunicate_matrix[i][j]: # if drone i can see drone j
                     comunications += 1
                     
                     temp_Ux = comunicate_matrix[i][j] * (information_state_list[i].x - information_state_list[j].x)
-                    ctrl_law_Ux = ctrl_law_Ux - temp_Ux
+                    ctrl_law_Ux -= temp_Ux
 
                     temp_Uy = comunicate_matrix[i][j] * (information_state_list[i].y - information_state_list[j].y)
-                    ctrl_law_Uy = ctrl_law_Uy - temp_Uy
+                    ctrl_law_Uy -= temp_Uy
 
-            ctrl_law_Ux -= comunicate_matrix[i][-1] * (information_state_list[i].x - information_state_list[-1].x)
-            ctrl_law_Uy -= comunicate_matrix[i][-1] * (information_state_list[i].y - information_state_list[-1].y)
-
+            # ctrl_law_U is the information control input, derivative of the drone i desired position
             # ctrl_law_U / comunications is how much distance drone i should move in the direction, based on our own rule
             # when consensus is found, ctrl_law_U tends to be 0, so the drones next positions tend to be the same
             next_positions[i].x += ctrl_law_Ux / comunications

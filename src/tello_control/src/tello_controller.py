@@ -74,7 +74,6 @@ class tello_controller():
         msg = Twist()
 
         if self.at_target:
-            self.consensus_agreed_state = self.pos
             msg.linear.x = 0.0
             msg.linear.y = 0.0
         else:

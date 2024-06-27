@@ -160,12 +160,12 @@ class control_algorithm():
                     comunications += 1
                     
                     temp_Ux = comunicate_matrix[i][j] * (information_state_list[i].x - information_state_list[j].x)
-                    ctrl_law_Ux = ctrl_law_Ux - temp_Ux
+                    ctrl_law_Ux -= temp_Ux
 
                     temp_Uy = comunicate_matrix[i][j] * (information_state_list[i].y - information_state_list[j].y)
-                    ctrl_law_Uy = ctrl_law_Uy - temp_Uy
+                    ctrl_law_Uy -= temp_Uy
 
-            # ctrl_law_U is the information control input
+            # ctrl_law_U is the information control input, derivative of the drone i desired position
             # ctrl_law_U / comunications is how much distance drone i should move in the direction, based on our own rule
             # when consensus is found, ctrl_law_U tends to be 0, so the drones next positions tend to be the same
             next_positions[i].x += ctrl_law_Ux / comunications
@@ -175,7 +175,9 @@ class control_algorithm():
     
     def consensus_algorithm(self):
 
-        consensus_agreed_pos_list: List[Point] = [drone.get_consensus_agreed_state() for drone in self.drones] if all([drone.get_consensus_agreed_state() for drone in self.drones]) else [drone.get_pos() for drone in self.drones]
+        # drone states are their desired positions
+        # initially, the states are their current positions
+        consensus_agreed_pos_list: List[Point]  = list(map(lambda drone: drone.get_consensus_agreed_state() if drone.get_consensus_agreed_state() else drone.get_pos(), self.drones))
     
         pos_list: List[Point] = [drone.get_pos() for drone in self.drones]
         self.trajectory_plot.append(pos_list)
