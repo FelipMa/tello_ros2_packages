@@ -141,7 +141,7 @@ class control_algorithm():
             ctrl_law_Uy = 0.0
             comunications = 1
 
-            for j in range(0, len(information_state_list) - 1): # minus 1 because the last element is the virtual leader
+            for j in range(0, len(information_state_list)):
                 if comunicate_matrix[i][j]: # if drone i can see drone j
                     comunications += 1
 
@@ -152,15 +152,6 @@ class control_algorithm():
                         ctrl_law_Ux -= comunicate_matrix[i][j] * (information_state_list[i].x - information_state_list[j].x)
                         ctrl_law_Uy -= comunicate_matrix[i][j] * (information_state_list[i].y - information_state_list[j].y)
 
-            if comunicate_matrix[i][-1]:
-                comunications += 1
-
-                if information_state_list[i] is None:
-                    information_state_list[i] = Point(x=0.0, y=0.0, z=0.0)
-
-                ctrl_law_Ux -= comunicate_matrix[i][-1] * (information_state_list[i].x - information_state_list[-1].x)
-                ctrl_law_Uy -= comunicate_matrix[i][-1] * (information_state_list[i].y - information_state_list[-1].y)
-
             # ctrl_law_U / comunications is how much distance the instanciated leader should "move"
             if comunications > 1:
                 if next_virtual_leader_instantiations[i] is None:
@@ -169,7 +160,7 @@ class control_algorithm():
                 next_virtual_leader_instantiations[i].x += ctrl_law_Ux / comunications
                 next_virtual_leader_instantiations[i].y += ctrl_law_Uy / comunications
 
-        return next_virtual_leader_instantiations
+        return next_virtual_leader_instantiations[:len(information_state_list) - 1]
     
     def calculate_next_virtual_leader_pos(self) -> None:
         initial_pos = Point(x=0.0, y=0.0, z=0.0)
@@ -184,14 +175,14 @@ class control_algorithm():
             return
 
         vel_x = 0.3
-        rvel_y = 0.3
+        vel_y = 0.3
 
         now = time.time()
         time_elapsed = now - self.last_virtual_leader_timestamp
         self.last_virtual_leader_timestamp = now
 
         space_moved_x = vel_x * time_elapsed
-        space_moved_y = rvel_y * time_elapsed
+        space_moved_y = vel_y * time_elapsed
 
         if abs(self.virtual_leader_pos.x - final_pos.x) > self.position_threshold:
             if self.virtual_leader_pos.x < final_pos.x:
@@ -206,6 +197,25 @@ class control_algorithm():
                 self.virtual_leader_pos.y -= space_moved_y
 
         return
+    
+    def calculate_control_inputs(self, old_virtual_leader_instantiations: List[Point], next_virtual_leader_instantiations: List[Point]) -> Point:
+        control_inputs = []
+
+        for i in range(0, len(next_virtual_leader_instantiations)):
+            if old_virtual_leader_instantiations[i] is None or next_virtual_leader_instantiations[i] is None:
+                control_inputs.append(Point(x=0.0, y=0.0, z=0.0))
+            else:
+                control_inputs.append(Point(x=next_virtual_leader_instantiations[i].x - old_virtual_leader_instantiations[i].x, y=next_virtual_leader_instantiations[i].y - old_virtual_leader_instantiations[i].y, z=0.0))
+
+        return control_inputs
+    
+    def calculate_next_positions(self, current_pos_list: List[Point], control_inputs: List[Point]) -> List[Point]:
+        next_positions = []
+
+        for i in range(0, len(control_inputs)):
+            next_positions.append(Point(x=current_pos_list[i].x + control_inputs[i].x, y=current_pos_list[i].y + control_inputs[i].y, z=current_pos_list[i].z + control_inputs[i].z))
+
+        return next_positions
     
     def consensus_algorithm(self):
         self.calculate_next_virtual_leader_pos()
@@ -229,12 +239,20 @@ class control_algorithm():
 
         self.virtual_leader_instantiations_plot.append(next_virtual_leader_instantiations)
 
-        #TODO according to leader position, calculate the control inputs
-        #TODO according to the control inputs, calculate the next position for each drone
+        control_inputs = self.calculate_control_inputs(consensus_agreed_leader_pos_list, next_virtual_leader_instantiations)
+
+        next_positions = self.calculate_next_positions(pos_list, control_inputs)
+
+        print(f'Virtual leader position: {now_virtual_leader_pos}')
+        print(f'Next virtual leader instantiations: {next_virtual_leader_instantiations}')
+        print(f'Control inputs: {control_inputs}')
+        print(f'Next positions: {next_positions}')
 
         for i in range(0, self.number_of_drones):
             self.drones[i].set_consensus_agreed_state(next_virtual_leader_instantiations[i])
-            # TODO: move drones to next positions based on virtual leader positions
+            self.drones[i].move_to_pos(next_positions[i])
+
+        time.sleep(1) # Time between iterations
 
         return
 
