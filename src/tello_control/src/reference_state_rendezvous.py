@@ -244,6 +244,10 @@ class control_algorithm():
             self.drones[i].move_to_pos(next_positions[i])
             self.drones[i].set_consensus_agreed_state(next_positions[i])
 
+        time.sleep(0.1)
+
+        return
+
     def generate_plot(self) -> None:
         trajectory_2d_fig = plt.figure(figsize=(6, 6))
         trajectory_ax = trajectory_2d_fig.add_subplot()

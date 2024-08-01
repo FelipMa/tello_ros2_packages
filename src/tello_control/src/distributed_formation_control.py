@@ -23,7 +23,7 @@ class control_algorithm():
         self.number_of_drones = 4
         self.finish = False
         self.distance_threshold = 0.05
-        self.position_threshold = 0.001
+        self.position_threshold = 0.05
         self.trajectory_plot: List[List[Point]] = []
         self.virtual_leader_instantiations_plot: List[List[Point]] = []
         self.comunicate_matrix = None
@@ -38,10 +38,6 @@ class control_algorithm():
         # Spin the node in a separate thread
         spin_node_thread = threading.Thread(target=rclpy.spin, args=(self.node,))
         spin_node_thread.start()
-
-        # start timeout thread
-        timeout_thread = threading.Thread(target=self.timeout_thread, args=(15,))
-        timeout_thread.start()
 
         # Take off
         for drone in self.drones:
@@ -164,7 +160,7 @@ class control_algorithm():
     
     def calculate_next_virtual_leader_pos(self) -> None:
         initial_pos = Point(x=0.0, y=0.0, z=0.0)
-        final_pos = Point(x=5.0, y=0.0, z=0.0)
+        final_pos = Point(x=5.0, y=2.0, z=0.0)
 
         if self.virtual_leader_pos is None:
             self.virtual_leader_pos = copy.deepcopy(initial_pos)
@@ -172,10 +168,12 @@ class control_algorithm():
             return
         
         if abs(self.virtual_leader_pos.x - final_pos.x) <= self.position_threshold and abs(self.virtual_leader_pos.y - final_pos.y) <= self.position_threshold:
+            timeout_thread = threading.Thread(target=self.timeout_thread, args=(5,))
+            timeout_thread.start()
             return
 
         vel_x = 0.3
-        vel_y = 0.3
+        vel_y = 0.12
 
         now = time.time()
         time_elapsed = now - self.last_virtual_leader_timestamp
@@ -243,16 +241,16 @@ class control_algorithm():
 
         next_positions = self.calculate_next_positions(pos_list, control_inputs)
 
-        print(f'Virtual leader position: {now_virtual_leader_pos}')
-        print(f'Next virtual leader instantiations: {next_virtual_leader_instantiations}')
-        print(f'Control inputs: {control_inputs}')
-        print(f'Next positions: {next_positions}')
+        #print(f'Virtual leader position: {now_virtual_leader_pos}')
+        #print(f'Next virtual leader instantiations: {next_virtual_leader_instantiations}')
+        #print(f'Control inputs: {control_inputs}')
+        #print(f'Next positions: {next_positions}')
 
         for i in range(0, self.number_of_drones):
             self.drones[i].set_consensus_agreed_state(next_virtual_leader_instantiations[i])
             self.drones[i].move_to_pos(next_positions[i])
 
-        time.sleep(1) # Time between iterations
+        time.sleep(0.1)
 
         return
 
