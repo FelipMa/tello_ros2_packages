@@ -315,7 +315,7 @@ class control_algorithm():
         nx.draw_circular(graph, labels=label_dict, with_labels=True, ax=graph_ax)
 
         local_time = time.localtime()
-        current_date = f"{local_time.tm_mday}-{local_time.tm_mon}-{local_time.tm_year}_{local_time.tm_hour}-{local_time.tm_min}-{local_time.tm_sec}"
+        current_date = f"{local_time.tm_year}-{local_time.tm_mon}-{local_time.tm_mday}_{local_time.tm_hour}-{local_time.tm_min}-{local_time.tm_sec}"
         
         path = 'pictures/reference_rendezvous'
         self.create_folder(path)

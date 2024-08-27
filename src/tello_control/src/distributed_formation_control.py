@@ -306,7 +306,7 @@ class control_algorithm():
         plt.subplots_adjust(hspace=0.5)
 
         local_time = time.localtime()
-        current_date = f"{local_time.tm_mday}-{local_time.tm_mon}-{local_time.tm_year}_{local_time.tm_hour}-{local_time.tm_min}-{local_time.tm_sec}"
+        current_date = f"{local_time.tm_year}-{local_time.tm_mon}-{local_time.tm_mday}_{local_time.tm_hour}-{local_time.tm_min}-{local_time.tm_sec}"
 
         graph_fig = plt.figure(figsize=(6, 6))
         graph_ax = graph_fig.add_subplot()
